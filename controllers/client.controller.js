@@ -1,7 +1,7 @@
 const Client = require('../models/client')
 
 /**
- * CREATE
+ * CREATE CLIENT (POST)
  */
 exports.create = async (req, res) => {
   try {
@@ -33,11 +33,30 @@ exports.create = async (req, res) => {
 }
 
 /**
- * READ ALL
+ * READ ALL + FILTERS (GET)
  */
 exports.getAll = async (req, res) => {
   try {
-    const clients = await Client.find().sort({ fullname: 1 })
+    const filters = {}
+
+    if (req.query.docID) filters.docID = req.query.docID
+    if (req.query.phone) filters.phone = req.query.phone
+    if (req.query.email) filters.email = req.query.email
+
+    // Búsquedas parciales (texto)
+    if (req.query.fullname) {
+      filters.fullname = { $regex: req.query.fullname, $options: 'i' }
+    }
+
+    if (req.query.address) {
+      filters.address = { $regex: req.query.address, $options: 'i' }
+    }
+
+    if (req.query.notes) {
+      filters.notes = { $regex: req.query.notes, $options: 'i' }
+    }
+
+    const clients = await Client.find(filters).sort({ fullname: 1 })
     res.json(clients)
   } catch (error) {
     res.status(500).json({
@@ -48,14 +67,16 @@ exports.getAll = async (req, res) => {
 }
 
 /**
- * READ ONE
+ * READ ONE (GET by docID)
  */
 exports.getByDoc = async (req, res) => {
   try {
     const client = await Client.findOne({ docID: req.params.docID })
 
     if (!client) {
-      return res.status(404).json({ message: 'Cliente no encontrado' })
+      return res.status(404).json({
+        message: 'Cliente no encontrado'
+      })
     }
 
     res.json(client)
@@ -68,7 +89,7 @@ exports.getByDoc = async (req, res) => {
 }
 
 /**
- * UPDATE
+ * UPDATE FULL (PUT)
  */
 exports.update = async (req, res) => {
   try {
@@ -85,7 +106,9 @@ exports.update = async (req, res) => {
     )
 
     if (!client) {
-      return res.status(404).json({ message: 'Cliente no encontrado' })
+      return res.status(404).json({
+        message: 'Cliente no encontrado'
+      })
     }
 
     res.json(client)
@@ -98,7 +121,7 @@ exports.update = async (req, res) => {
 }
 
 /**
- * DELETE
+ * DELETE CLIENT
  */
 exports.remove = async (req, res) => {
   try {
@@ -107,10 +130,14 @@ exports.remove = async (req, res) => {
     })
 
     if (!client) {
-      return res.status(404).json({ message: 'Cliente no encontrado' })
+      return res.status(404).json({
+        message: 'Cliente no encontrado'
+      })
     }
 
-    res.json({ message: 'Cliente eliminado correctamente' })
+    res.json({
+      message: 'Cliente eliminado correctamente'
+    })
   } catch (error) {
     res.status(500).json({
       message: 'Error al eliminar cliente',

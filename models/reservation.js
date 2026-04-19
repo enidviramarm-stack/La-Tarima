@@ -52,7 +52,8 @@ const ReservationSchema = new Schema({
     trim: true
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  collection: 'reservations' // fuerza nombre consistente
 })
 
 module.exports = model('Reservation', ReservationSchema)

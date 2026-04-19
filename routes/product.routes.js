@@ -27,6 +27,15 @@ router.get(
   controller.getById
 )
 
+
+router.patch(
+  '/:Product_id',
+  validator.validateUpdateProduct,
+  validate,
+  controller.update
+)
+
+
 router.put(
   '/:Product_id',
   validator.validateUpdateProduct,

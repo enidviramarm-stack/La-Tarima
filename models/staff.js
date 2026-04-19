@@ -29,7 +29,8 @@ const StaffSchema = new Schema({
     match: /.+@.+\..+/
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  collection: 'staff'
 })
 
 module.exports = model('Staff', StaffSchema)

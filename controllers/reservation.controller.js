@@ -2,7 +2,7 @@ const Reservation = require('../models/reservation')
 const Table = require('../models/table')
 
 /**
- * CREATE RESERVATION
+ * CREATE RESERVATION (POST)
  */
 exports.create = async (req, res) => {
   try {
@@ -17,43 +17,35 @@ exports.create = async (req, res) => {
       guest
     } = req.body
 
-    // Validaciones básicas de negocio
     if (!reservation_id || !table_id || !date || !startTime || !endTime || !peopleCount) {
       return res.status(400).json({
         message: 'Campos obligatorios faltantes'
       })
     }
 
-    // Validar cliente o invitado
     if (!clientRef && !guest) {
       return res.status(400).json({
         message: 'Debe existir clientRef o guest'
       })
     }
 
-    // Validar orden horario
     if (startTime >= endTime) {
       return res.status(400).json({
         message: 'La hora de inicio debe ser menor a la hora de fin'
       })
     }
 
-    // Validar mesa existente
     const table = await Table.findOne({ table_id })
     if (!table) {
-      return res.status(404).json({
-        message: 'Mesa no existente'
-      })
+      return res.status(404).json({ message: 'Mesa no existente' })
     }
 
-    // Validar capacidad
     if (peopleCount > table.capacity) {
       return res.status(400).json({
         message: 'La cantidad de personas excede la capacidad de la mesa'
       })
     }
 
-    // 🔥 Evitar doble reserva (regla crítica)
     const conflict = await Reservation.findOne({
       table_id,
       date,
@@ -82,11 +74,29 @@ exports.create = async (req, res) => {
 }
 
 /**
- * READ ALL RESERVATIONS
+ * READ ALL + FILTERS (GET)
  */
 exports.getAll = async (req, res) => {
   try {
-    const reservations = await Reservation.find().sort({ date: 1, startTime: 1 })
+    const filters = {}
+
+    // Filtros exactos por campo
+    if (req.query.table_id) filters.table_id = req.query.table_id
+    if (req.query.date) filters.date = req.query.date
+    if (req.query.startTime) filters.startTime = req.query.startTime
+    if (req.query.endTime) filters.endTime = req.query.endTime
+    if (req.query.peopleCount) filters.peopleCount = Number(req.query.peopleCount)
+    if (req.query.status) filters.status = req.query.status
+    if (req.query.channel) filters.channel = req.query.channel
+
+    // Filtro parcial para notes (búsqueda por texto)
+    if (req.query.notes) {
+      filters.notes = { $regex: req.query.notes, $options: 'i' }
+    }
+
+    const reservations = await Reservation.find(filters)
+      .sort({ date: 1, startTime: 1 })
+
     res.json(reservations)
   } catch (error) {
     res.status(500).json({
@@ -97,7 +107,7 @@ exports.getAll = async (req, res) => {
 }
 
 /**
- * READ RESERVATION BY ID
+ * READ ONE (GET by reservation_id)
  */
 exports.getById = async (req, res) => {
   try {
@@ -121,7 +131,7 @@ exports.getById = async (req, res) => {
 }
 
 /**
- * UPDATE RESERVATION
+ * UPDATE FULL (PUT)
  */
 exports.update = async (req, res) => {
   try {
@@ -153,7 +163,34 @@ exports.update = async (req, res) => {
 }
 
 /**
- * DELETE / CANCEL RESERVATION
+ * UPDATE PARTIAL (PATCH)
+ * Permite modificar cualquier campo puntual (status, notes, channel, etc.)
+ */
+exports.updatePartial = async (req, res) => {
+  try {
+    const reservation = await Reservation.findOneAndUpdate(
+      { reservation_id: req.params.reservation_id },
+      req.body,
+      { new: true }
+    )
+
+    if (!reservation) {
+      return res.status(404).json({
+        message: 'Reserva no encontrada'
+      })
+    }
+
+    res.json(reservation)
+  } catch (error) {
+    res.status(500).json({
+      message: 'Error al modificar la reserva',
+      error: error.message
+    })
+  }
+}
+
+/**
+ * DELETE = cancelación lógica
  */
 exports.remove = async (req, res) => {
   try {
