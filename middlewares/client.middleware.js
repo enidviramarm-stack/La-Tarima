@@ -1,5 +1,8 @@
 const { body, param } = require('express-validator')
 
+/**
+ * CREATE CLIENT
+ */
 exports.validateCreateClient = [
   body('fullname')
     .trim()
@@ -21,18 +24,52 @@ exports.validateCreateClient = [
     .isLength({ min: 7 }).withMessage('teléfono inválido')
 ]
 
+/**
+ * UPDATE CLIENT (PUT / PATCH)
+ */
 exports.validateUpdateClient = [
+  // ❌ No permitir cambiar el identificador
   body('docID')
     .not()
     .exists()
     .withMessage('No se puede modificar el docID'),
 
+  // ✅ Evitar body vacío
+  body().custom(body => {
+    if (!body || Object.keys(body).length === 0) {
+      throw new Error('Debe enviar al menos un campo para actualizar')
+    }
+    return true
+  }),
+
+  // ✅ Campos permitidos y validados
+  body('fullname')
+    .optional()
+    .trim()
+    .isLength({ min: 3 }).withMessage('fullname inválido'),
+
   body('email')
     .optional()
     .trim()
-    .isEmail().withMessage('email inválido')
+    .isEmail().withMessage('email inválido'),
+
+  body('phone')
+    .optional()
+    .trim()
+    .isLength({ min: 7 }).withMessage('teléfono inválido'),
+
+  body('address')
+    .optional()
+    .trim(),
+
+  body('notes')
+    .optional()
+    .trim()
 ]
 
+/**
+ * PARAM VALIDATION
+ */
 exports.validateDocParam = [
   param('docID')
     .notEmpty()

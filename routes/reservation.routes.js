@@ -10,6 +10,9 @@ const controller = require('../controllers/reservation.controller')
  * PATCH /reservations/:reservation_id: Actualizar parcialmente (status, notes, etc.)
  * DELETE /reservations/:reservation_id: Cancelar reserva (lógica)
  */
+
+router.get('/availability', controller.checkAvailability)
+
 router.post('/', controller.create)
 
 router.get('/', controller.getAll)

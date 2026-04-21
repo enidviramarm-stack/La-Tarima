@@ -114,7 +114,7 @@ exports.remove = async (req, res) => {
     })
 
     if (!table) {
-      return res.status(404).json({
+      return res. status(404).json({
         message: 'Mesa no encontrada'
       })
     }

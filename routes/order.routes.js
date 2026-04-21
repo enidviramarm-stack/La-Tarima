@@ -32,7 +32,23 @@ router.patch(
   validator.validateUpdateStatus,
   validate,
   controller.updateStatus
+
 )
+
+router.patch(
+  '/:order_id',
+  validator.validateOrderParam,
+  validate,
+  controller.update
+)
+
+router.patch(
+  '/:order_id/add-item',
+  validator.validateOrderParam,
+  validate,
+  controller.addItem
+)
+
 
 router.delete(
   '/:order_id',
@@ -41,4 +57,12 @@ router.delete(
   controller.remove
 )
 
+router.patch(
+  '/:order_id/remove-item',
+  validator.validateOrderParam,
+  validate,
+  controller.removeItem
+)
+
 module.exports = router
+

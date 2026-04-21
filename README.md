@@ -77,6 +77,7 @@ Sistema de Reservas y Gestión de Bar – La Tarima
     POST    /api/tables
     GET     /api/tables
     GET     /api/tables/:table_id
+    PATCH   /api/tables/:table_id
     PUT     /api/tables/:table_id
     DELETE  /api/tables/:table_id
 
@@ -85,6 +86,7 @@ Sistema de Reservas y Gestión de Bar – La Tarima
     POST    /api/products
     GET     /api/products
     GET     /api/products/:Product_id
+    PATCH   /api/products/:Product_id
     PUT     /api/products/:Product_id
     DELETE  /api/products/:Product_id
 
@@ -93,23 +95,28 @@ Sistema de Reservas y Gestión de Bar – La Tarima
     POST    /api/clients
     GET     /api/clients
     GET     /api/clients/:docID
+    PATCH   /api/clients/:docID
     PUT     /api/clients/:docID
     DELETE  /api/clients/:docID
+
 
     Staff
 
     POST    /api/staff
     GET     /api/staff
     GET     /api/staff/:user_id
+    PATCH   /api/staff/:user_id
     PUT     /api/staff/:user_id
     DELETE  /api/staff/:user_id
 
     Reservas
 
+    GET     /api/reservations/availability
     POST    /api/reservations
     GET     /api/reservations
     GET     /api/reservations/:reservation_id
     PUT     /api/reservations/:reservation_id
+    PATCH   /api/reservations/:reservation_id
     DELETE  /api/reservations/:reservation_id   (cancela la reserva)
 
     Pedidos

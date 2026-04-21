@@ -1,6 +1,57 @@
 const Reservation = require('../models/reservation')
 const Table = require('../models/table')
 
+
+
+/**
+ * CHECK TABLE AVAILABILITY
+ */
+exports.checkAvailability = async (req, res) => {
+  try {
+    const { table_id, date, startTime, endTime } = req.query
+
+    if (!table_id || !date || !startTime || !endTime) {
+      return res.status(400).json({
+        message: 'table_id, date, startTime y endTime son obligatorios'
+      })
+    }
+
+    const conflict = await Reservation.findOne({
+      table_id,
+      date,
+      status: { $ne: 'cancelada' },
+      $or: [
+        { startTime: { $lt: endTime }, endTime: { $gt: startTime } }
+      ]
+    })
+
+    if (conflict) {
+      return res.json({
+        table_id,
+        date,
+        startTime,
+        endTime,
+        available: false,
+        reason: 'La mesa está reservada en ese horario'
+      })
+    }
+
+    res.json({
+      table_id,
+      date,
+      startTime,
+      endTime,
+      available: true
+    })
+  } catch (error) {
+    res.status(500).json({
+      message: 'Error al verificar disponibilidad',
+      error: error.message
+    })
+  }
+}
+
+
 /**
  * CREATE RESERVATION (POST)
  */
@@ -217,3 +268,5 @@ exports.remove = async (req, res) => {
     })
   }
 }
+
+
