@@ -1,5 +1,21 @@
 const { body, param, query } = require('express-validator')
 
+const timeToMinutes = (time) => {
+  const [h, m] = String(time).split(':').map(Number)
+  return h * 60 + m
+}
+
+const getDurationMinutes = (startTime, endTime) => {
+  let start = timeToMinutes(startTime)
+  let end = timeToMinutes(endTime)
+
+  if (end <= start) {
+    end += 24 * 60
+  }
+
+  return end - start
+}
+
 exports.validateCreateReservation = [
   body('table_id')
     .trim()
@@ -42,20 +58,25 @@ exports.validateCreateReservation = [
       return true
     }),
 
-  body('endTime').custom((endTime, { req }) => {
-    if (req.body.startTime && endTime && req.body.startTime >= endTime) {
-      throw new Error('La hora de inicio debe ser menor a la hora de fin')
-    }
-    const [h, m] = endTime.split(':').map(Number)
-    const duration = (h * 60 + m) - (req.body.startTime.split(':').map(Number).reduce((a, b) => a * 60 + b))
-    if (duration < 30) {
-      throw new Error('La reserva debe tener una duración mínima de 30 minutos')
-    }
-    if (duration > 480) {
-      throw new Error('La reserva no puede exceder 8 horas')
-    }
-    return true
-  }),
+
+
+body('endTime').custom((endTime, { req }) => {
+  if (!req.body.startTime || !endTime) return true
+
+  const duration = getDurationMinutes(req.body.startTime, endTime)
+
+  if (duration < 30) {
+    throw new Error('La reserva debe tener una duración mínima de 30 minutos')
+  }
+
+  if (duration > 480) {
+    throw new Error('La reserva no puede exceder 8 horas')
+  }
+
+  return true
+
+
+}),
 
   body('peopleCount')
     .isInt({ min: 1, max: 100 }).withMessage('peopleCount debe estar entre 1 y 100'),
@@ -204,9 +225,18 @@ exports.validateAvailabilityQuery = [
     .notEmpty().withMessage('endTime es obligatorio')
     .matches(/^\d{2}:\d{2}$/).withMessage('Formato endTime inválido (HH:MM)')
     .custom((value, { req }) => {
-      if (req.query.startTime && value && req.query.startTime >= value) {
-        throw new Error('La hora de inicio debe ser menor a la hora de fin')
+      if (!req.query.startTime || !value) return true
+
+      const duration = getDurationMinutes(req.query.startTime, value)
+
+      if (duration < 30) {
+        throw new Error('La reserva debe tener una duración mínima de 30 minutos')
       }
+
+      if (duration > 480) {
+        throw new Error('La reserva no puede exceder 8 horas')
+      }
+
       return true
     })
 ]

@@ -1,6 +1,7 @@
 const router     = require('express').Router()
 const controller = require('../controllers/product.controller')
 const validator  = require('../middlewares/product.middleware')
+const { uploadProductImage } = require('../middlewares/upload.middleware')
 const { validationResult } = require('express-validator')
 
 const validate = (req, res, next) => {
@@ -20,6 +21,7 @@ const validate = (req, res, next) => {
 // Crear producto
 router.post(
   '/',
+  uploadProductImage.single('image'),
   validator.validateCreateProduct,
   validate,
   controller.create
@@ -41,6 +43,7 @@ router.patch(
   '/:product_id',
   validator.validateProductParam,
   validate,
+  uploadProductImage.single('image'),
   validator.validateUpdateProduct,
   validate,
   controller.update

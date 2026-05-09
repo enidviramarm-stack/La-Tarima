@@ -28,7 +28,7 @@ const ORDER_STATUS = {
 
 const EMPTY_FORM = {
   table_id: '', date: '', startTime: '', endTime: '',
-  peopleCount: 1, channel: '', notes: '', status: 'pendiente',
+  peopleCount: 1, channel: 'presencial', notes: '', status: 'pendiente',
   guest: { fullname: '', phone: '', notes: '' }
 }
 
@@ -96,6 +96,62 @@ const fmtDate = (d) => {
   if (!d) return ''
   const [y, m, day] = d.split('-')
   return `${day}/${m}/${y}`
+}
+
+const normalizeTimeTo24h = (value) => {
+  if (!value) return value
+
+  const cleanValue = String(value).trim()
+
+  if (/^\d{2}:\d{2}$/.test(cleanValue)) {
+    return cleanValue
+  }
+
+  const match = cleanValue.match(/^(\d{1,2}):(\d{2})\s?(AM|PM)$/i)
+
+  if (!match) {
+    return cleanValue
+  }
+
+  let [, hour, minute, period] = match
+  hour = Number(hour)
+  period = period.toUpperCase()
+
+  if (period === 'PM' && hour !== 12) {
+    hour += 12
+  }
+
+  if (period === 'AM' && hour === 12) {
+    hour = 0
+  }
+
+  return `${String(hour).padStart(2, '0')}:${minute}`
+}
+
+const timeToMinutes = (time) => {
+  const [h, m] = String(time).split(':').map(Number)
+  return h * 60 + m
+}
+
+const getDurationMinutes = (startTime, endTime) => {
+  let start = timeToMinutes(startTime)
+  let end = timeToMinutes(endTime)
+
+  if (end <= start) {
+    end += 24 * 60
+  }
+
+  return end - start
+}
+
+const getApiErrorMessage = (err, fallback = 'Error inesperado') => {
+  const data = err.response?.data
+
+  const details = data?.errors
+    ?.map(e => `${e.field}: ${e.message}`)
+    .join('\n')
+
+  return `${data?.message || err.message || fallback}${details ? `\n\nDetalles:\n${details}` : ''}`
 }
 
 // Dado un table_id, devuelve "Mesa 3 — Terraza" usando la lista de mesas
@@ -351,7 +407,15 @@ function ReservationFormModal({ initial, tables, clients, onClose, onSave }) {
     if (!form.date) return setError('La fecha es obligatoria')
     if (!form.startTime) return setError('La hora de inicio es obligatoria')
     if (!form.endTime) return setError('La hora de fin es obligatoria')
-    if (form.startTime >= form.endTime) return setError('La hora de inicio debe ser menor a la hora de fin')
+  const duration = getDurationMinutes(form.startTime, form.endTime)
+
+    if (duration < 30) {
+      return setError('La reserva debe tener una duración mínima de 30 minutos')
+    }
+
+    if (duration > 480) {
+      return setError('La reserva no puede exceder 8 horas')
+    }
 
     if (form.clientType === 'registered') {
       if (!selectedClient?.docID) return setError('Selecciona un cliente registrado')
@@ -364,11 +428,7 @@ function ReservationFormModal({ initial, tables, clients, onClose, onSave }) {
       await onSave(form)
       onClose()
     } catch(e) {
-      const msg = e.response?.data?.message
-        || e.response?.data?.errors?.[0]?.message
-        || e.message
-        || 'Error al guardar'
-      setError(msg)
+      setError(getApiErrorMessage(e, 'Error al guardar'))
     } finally {
       setSaving(false)
     }
@@ -769,19 +829,20 @@ export default function Reservations() {
 
   const buildReservationPayload = (form) => {
     const base = {
-      table_id:    form.table_id,
-      date:        form.date,
-      startTime:   form.startTime,
-      endTime:     form.endTime,
+      table_id: form.table_id,
+      date: form.date,
+      startTime: normalizeTimeTo24h(form.startTime),
+      endTime: normalizeTimeTo24h(form.endTime),
       peopleCount: Number(form.peopleCount),
-      ...(form.channel && { channel: form.channel }),
-      ...(form.notes   && { notes:   form.notes }),
+      ...(form.channel && { channel: String(form.channel).toLowerCase() }),
+      ...(form.notes && { notes: form.notes }),
+      ...(form.status && { status: form.status }),
     }
 
     if (form.clientType === 'registered') {
       base.clientRef = {
         fullname: form.clientRef?.fullname || '',
-        docID:    form.clientRef?.docID || ''
+        docID: form.clientRef?.docID || ''
       }
     } else {
       base.guest = {
@@ -793,7 +854,6 @@ export default function Reservations() {
 
     return base
   }
-
   // ── CREATE ──
   const handleCreate = async (form) => {
     const payload = buildReservationPayload(form)

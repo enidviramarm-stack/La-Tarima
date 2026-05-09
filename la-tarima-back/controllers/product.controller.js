@@ -17,7 +17,9 @@ const ALLOWED_UPDATE_FIELDS = [
 
 exports.create = async (req, res) => {
   try {
-    const { name, category, subcategory, basePrice, description, imageUrl } = req.body
+    console.log('BODY PRODUCT:', req.body)
+    console.log('FILE PRODUCT:', req.file)
+    const { name, category, subcategory, basePrice, description } = req.body
 
     if (!name || !category || !subcategory || basePrice == null) {
       return res.status(400).json({
@@ -27,12 +29,16 @@ exports.create = async (req, res) => {
 
     const product_id = await generateId('product', 'PROD_')
 
+    const imageUrl = req.file
+      ? `/uploads/products/${req.file.filename}`
+      : undefined
+
     const product = new Product({
       product_id,
       name,
       category,
       subcategory,
-      basePrice,
+      basePrice: Number(basePrice),
       description,
       imageUrl
     })
@@ -53,7 +59,6 @@ exports.create = async (req, res) => {
     })
   }
 }
-
 
 /**
  * READ ALL PRODUCTS
@@ -119,12 +124,25 @@ exports.getById = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     const updateData = {}
+
     ALLOWED_UPDATE_FIELDS.forEach(field => {
-      if (req.body[field] !== undefined) updateData[field] = req.body[field]
+      if (req.body[field] !== undefined) {
+        updateData[field] = req.body[field]
+      }
     })
 
+    if (updateData.basePrice !== undefined) {
+      updateData.basePrice = Number(updateData.basePrice)
+    }
+
+    if (req.file) {
+      updateData.imageUrl = `/uploads/products/${req.file.filename}`
+    }
+
     if (Object.keys(updateData).length === 0) {
-      return res.status(400).json({ message: 'Debe enviar al menos un campo válido para actualizar' })
+      return res.status(400).json({
+        message: 'Debe enviar al menos un campo válido para actualizar'
+      })
     }
 
     const product = await Product.findOneAndUpdate(
@@ -134,9 +152,13 @@ exports.update = async (req, res) => {
     )
 
     if (!product) return res.status(404).json({ message: 'Producto no encontrado' })
+
     res.json(product)
   } catch (error) {
-    res.status(500).json({ message: 'Error al actualizar producto', error: error.message })
+    res.status(500).json({
+      message: 'Error al actualizar producto',
+      error: error.message
+    })
   }
 }
 

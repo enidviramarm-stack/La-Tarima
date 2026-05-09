@@ -12,6 +12,26 @@ const ALLOWED_FIELDS = [
   'guest', 'notes', 'waiter_id'
 ]
 
+const timeToMinutes = (time) => {
+  const [h, m] = String(time).split(':').map(Number)
+  return h * 60 + m
+}
+
+const normalizeRange = (startTime, endTime) => {
+  const start = timeToMinutes(startTime)
+  let end = timeToMinutes(endTime)
+
+  if (end <= start) {
+    end += 24 * 60
+  }
+
+  return { start, end }
+}
+
+const rangesOverlap = (startA, endA, startB, endB) => {
+  return startA < endB && endA > startB
+}
+
 const syncTableStatusByReservation = async (reservation) => {
   if (!reservation?.table_id) return
 
@@ -103,11 +123,27 @@ exports.checkAvailability = async (req, res) => {
       return res.status(404).json({ message: 'Mesa no encontrada o inactiva' })
     }
 
-    const conflict = await Reservation.findOne({
-      table_id, date,
-      status: { $ne: 'cancelada' },
-      $or: [{ startTime: { $lt: endTime }, endTime: { $gt: startTime } }]
-    })
+const requestedRange = normalizeRange(startTime, endTime)
+
+const sameDayReservations = await Reservation.find({
+  table_id,
+  date,
+  status: { $ne: 'cancelada' }
+})
+
+const conflict = sameDayReservations.find(existingReservation => {
+  const existingRange = normalizeRange(
+    existingReservation.startTime,
+    existingReservation.endTime
+  )
+
+  return rangesOverlap(
+    requestedRange.start,
+    requestedRange.end,
+    existingRange.start,
+    existingRange.end
+  )
+})
 
     if (conflict) {
       return res.json({
@@ -142,9 +178,26 @@ exports.create = async (req, res) => {
 
     const normalizedCustomer = await validateClientOrGuest({ clientRef, guest })
 
-    if (startTime >= endTime) {
-      return res.status(400).json({ message: 'La hora de inicio debe ser menor a la hora de fin' })
+    const timeToMinutes = (time) => {
+      const [h, m] = String(time).split(':').map(Number)
+      return h * 60 + m
     }
+
+    const normalizeRange = (startTime, endTime) => {
+      const start = timeToMinutes(startTime)
+      let end = timeToMinutes(endTime)
+
+      if (end <= start) {
+        end += 24 * 60
+      }
+
+      return { start, end }
+    }
+
+    const rangesOverlap = (startA, endA, startB, endB) => {
+      return startA < endB && endA > startB
+    }
+
 
     const table = await Table.findOne({ table_id, active: true })
     if (!table) {
@@ -154,6 +207,21 @@ exports.create = async (req, res) => {
     if (peopleCount > table.capacity) {
       return res.status(400).json({
         message: `La cantidad de personas (${peopleCount}) excede la capacidad de la mesa (${table.capacity})`
+      })
+    }
+
+    const { start, end } = normalizeRange(startTime, endTime)
+    const duration = end - start
+
+    if (duration < 30) {
+      return res.status(400).json({
+        message: 'La reserva debe tener una duración mínima de 30 minutos'
+      })
+    }
+
+    if (duration > 480) {
+      return res.status(400).json({
+        message: 'La reserva no puede exceder 8 horas'
       })
     }
 
@@ -169,14 +237,31 @@ exports.create = async (req, res) => {
       }
     }
 
-    const conflict = await Reservation.findOne({
-      table_id, date,
-      status: { $ne: 'cancelada' },
-      $or: [{ startTime: { $lt: endTime }, endTime: { $gt: startTime } }]
+    const sameDayReservations = await Reservation.find({
+      table_id,
+      date,
+      status: { $ne: 'cancelada' }
+    })
+
+    const conflict = sameDayReservations.find(existingReservation => {
+      const existingRange = normalizeRange(
+        existingReservation.startTime,
+        existingReservation.endTime
+      )
+
+      return rangesOverlap(start, end, existingRange.start, existingRange.end)
     })
 
     if (conflict) {
-      return res.status(409).json({ message: 'La mesa ya está reservada en ese horario' })
+      return res.status(409).json({
+        message: 'La mesa ya está reservada en ese horario',
+        conflictWith: {
+          reservation_id: conflict.reservation_id,
+          startTime: conflict.startTime,
+          endTime: conflict.endTime,
+          status: conflict.status
+        }
+      })
     }
 
     const reservation_id = await generateId('reservation', 'RES_')
@@ -268,9 +353,23 @@ const performUpdate = async (req, res) => {
     }
 
     const start = updateData.startTime
-    const end   = updateData.endTime
-    if (start && end && start >= end) {
-      return res.status(400).json({ message: 'La hora de inicio debe ser menor a la hora de fin' })
+    const end = updateData.endTime
+
+    if (start && end) {
+      const updatedRange = normalizeRange(start, end)
+      const duration = updatedRange.end - updatedRange.start
+
+      if (duration < 30) {
+        return res.status(400).json({
+          message: 'La reserva debe tener una duración mínima de 30 minutos'
+        })
+      }
+
+      if (duration > 480) {
+        return res.status(400).json({
+          message: 'La reserva no puede exceder 8 horas'
+        })
+      }
     }
 
     if (updateData.waiter_id) {
@@ -299,6 +398,58 @@ const performUpdate = async (req, res) => {
         message: 'No se puede modificar una reserva completada o cancelada'
       })
     }
+  const finalTableId = updateData.table_id || currentReservation.table_id
+const finalDate = updateData.date || currentReservation.date
+const finalStartTime = updateData.startTime || currentReservation.startTime
+const finalEndTime = updateData.endTime || currentReservation.endTime
+
+const finalRange = normalizeRange(finalStartTime, finalEndTime)
+const finalDuration = finalRange.end - finalRange.start
+
+if (finalDuration < 30) {
+  return res.status(400).json({
+    message: 'La reserva debe tener una duración mínima de 30 minutos'
+  })
+}
+
+if (finalDuration > 480) {
+  return res.status(400).json({
+    message: 'La reserva no puede exceder 8 horas'
+  })
+}
+
+const conflictingReservations = await Reservation.find({
+  reservation_id: { $ne: req.params.reservation_id },
+  table_id: finalTableId,
+  date: finalDate,
+  status: { $ne: 'cancelada' }
+})
+
+const conflict = conflictingReservations.find(existingReservation => {
+  const existingRange = normalizeRange(
+    existingReservation.startTime,
+    existingReservation.endTime
+  )
+
+  return rangesOverlap(
+    finalRange.start,
+    finalRange.end,
+    existingRange.start,
+    existingRange.end
+  )
+})
+
+if (conflict) {
+  return res.status(409).json({
+    message: 'La mesa ya está reservada en ese horario',
+    conflictWith: {
+      reservation_id: conflict.reservation_id,
+      startTime: conflict.startTime,
+      endTime: conflict.endTime,
+      status: conflict.status
+    }
+  })
+}
 
     if (updateData.clientRef || updateData.guest) {
       const normalizedCustomer = await validateClientOrGuest({

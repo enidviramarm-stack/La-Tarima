@@ -30,8 +30,10 @@ const ProductSchema = new Schema({
       'licor',
       'vino',
       'snack',
+      'entradas',
+      'platos_fuertes',
+      'especialidades',
       'especial',
-      'comida',
       'otro'
     ]
   },

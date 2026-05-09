@@ -115,6 +115,27 @@ body {
 }
 .btn-accent:hover { background: var(--accent-hover); transform: scale(1.05); }
 
+.btn-success {
+  background: #10B981 !important;
+  color: #fff !important;
+  border-color: #10B981 !important;
+}
+.btn-success:hover { background: #059669 !important; }
+
+.btn-warning {
+  background: #F59E0B !important;
+  color: #fff !important;
+  border-color: #F59E0B !important;
+}
+.btn-warning:hover { background: #D97706 !important; }
+
+.btn-danger {
+  background: #EF4444 !important;
+  color: #fff !important;
+  border-color: #EF4444 !important;
+}
+.btn-danger:hover { background: #DC2626 !important; }
+
 /* ── INPUTS ── */
 input, select, textarea {
   font-family: var(--font-body);

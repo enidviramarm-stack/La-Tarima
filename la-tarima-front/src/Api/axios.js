@@ -11,7 +11,23 @@ const api = axios.create({
 })
 
 /**
- * Interceptor para manejar errores globales
+ * Interceptor para peticiones
+ * Detecta FormData y remueve Content-Type para que axios/navegador lo maneje automáticamente
+ */
+api.interceptors.request.use(
+  config => {
+    // Si el data es FormData, remover el header Content-Type
+    // Axios lo calculará automáticamente con el boundary correcto
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type']
+    }
+    return config
+  },
+  error => Promise.reject(error)
+)
+
+/**
+ * Interceptor para manejar errores en respuestas
  */
 api.interceptors.response.use(
   response => response,

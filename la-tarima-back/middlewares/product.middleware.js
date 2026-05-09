@@ -8,11 +8,12 @@ const subcategories = [
   'licor',
   'vino',
   'snack',
+  'entradas',
+  'platos_fuertes',
+  'especialidades',
   'especial',
-  'comida',
   'otro'
 ]
-
 exports.validateCreateProduct = [
   body('product_id')
     .not()
