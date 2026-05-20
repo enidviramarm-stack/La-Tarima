@@ -1,143 +1,186 @@
-import { useState, useEffect } from 'react'
-import { Search, Bell, ChevronDown, CalendarDays, Clock, Users, MapPin, User, Phone, ShoppingBag, CreditCard, CheckCircle2, Circle, XCircle, RefreshCw, Eye, Plus, Edit2, Trash2 } from 'lucide-react'
-import ProductCard from '../components/ProductCard'
-import OrderPanel from '../components/OrderPanel'
-import CategoryFilter from '../components/CategoryFilter'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import {
+  Search, Plus, X, Edit2, Trash2, Eye, ShoppingBag, CalendarDays,
+  User, Hash, ChevronUp, ChevronDown, Users, MapPin, Clock,
+  CreditCard, ChefHat, Minus, FileText, CheckCircle2, ImageOff,
+  Coffee, UtensilsCrossed, Tag
+} from 'lucide-react'
 import api from '../Api/axios'
 
-// ─── CONSTANTES ───────────────────────────────────────────────
-const STATUS_CONFIG = {
-  pendiente:  { label: 'Pendiente',  color: '#B45309', bg: '#FEF3C7' },
-  confirmada: { label: 'Confirmada', color: '#1D4ED8', bg: '#DBEAFE' },
-  en_curso:   { label: 'En curso',   color: '#065F46', bg: '#D1FAE5' },
-  completada: { label: 'Completada', color: '#374151', bg: '#F3F4F6' },
-  cancelada:  { label: 'Cancelada',  color: '#B91C1C', bg: '#FEE2E2' },
+const API_BASE_URL = 'http://localhost:3000'
+
+const CATEGORY_CONFIG = {
+  comida: { label: 'Comida', color: '#92400E', bg: '#FEF3C7', icon: UtensilsCrossed },
+  bebida: { label: 'Bebida', color: '#1E40AF', bg: '#DBEAFE', icon: Coffee },
+  otro: { label: 'Otro', color: '#374151', bg: '#F3F4F6', icon: Tag }
 }
 
 const ORDER_STATUS = {
   abierto: { label: 'Abierto', color: '#1D4ED8', bg: '#DBEAFE' },
-  enviado_cocina: { label: 'Enviado', color: '#B45309', bg: '#FEF3C7' },
+  enviado_cocina: { label: 'Enviado a cocina', color: '#B45309', bg: '#FEF3C7' },
   en_preparacion: { label: 'Preparando', color: '#F59E0B', bg: '#FEF3C7' },
   listo: { label: 'Listo', color: '#065F46', bg: '#D1FAE5' },
   servido: { label: 'Servido', color: '#374151', bg: '#F3F4F6' },
   cancelado: { label: 'Cancelado', color: '#B91C1C', bg: '#FEE2E2' },
 }
 
-const PAY_STATUS = {
+const STATUS_CONFIG = {
   pendiente: { label: 'Pendiente', color: '#B45309', bg: '#FEF3C7' },
-  aprobado:  { label: 'Aprobado',  color: '#065F46', bg: '#D1FAE5' },
+  confirmada: { label: 'Confirmada', color: '#1D4ED8', bg: '#DBEAFE' },
+  en_curso: { label: 'En curso', color: '#065F46', bg: '#D1FAE5' },
+  completada: { label: 'Completada', color: '#374151', bg: '#F3F4F6' },
+  cancelada: { label: 'Cancelada', color: '#B91C1C', bg: '#FEE2E2' },
 }
 
-// ─── HELPERS ──────────────────────────────────────────────────
-const fmt = (n) => '$ ' + Number(n).toLocaleString('es-CO')
-const fmtDate = (d) => {
-  if (!d) return ''
-  const [y, m, day] = d.split('-')
-  return `${day}/${m}/${y}`
+const PROCESS_STATUSES = ['enviado_cocina', 'en_preparacion', 'listo']
+const RESERVATION_STATUSES_FOR_ORDERS = ['confirmada', 'en_curso']
+
+const EMPTY_ORDER_FORM = {
+  clientHint: '',
+  notes: ''
 }
 
-const normalizeTimeTo24h = (value) => {
-  if (!value) return value
+const EMPTY_RESERVATION_FORM = {
+  table_id: '',
+  date: '',
+  startTime: '',
+  endTime: '',
+  peopleCount: 1,
+  channel: 'presencial',
+  notes: '',
+  status: 'pendiente',
+  clientType: 'guest',
+  clientRef: { fullname: '', docID: '' },
+  guest: { fullname: '', phone: '', notes: '' },
+  appliedCoupons: []
+}
 
-  const cleanValue = String(value).trim()
+const fmt = (n) => '$ ' + Number(n || 0).toLocaleString('es-CO')
 
-  // input type="time" normalmente ya entrega HH:mm
-  if (/^\d{2}:\d{2}$/.test(cleanValue)) {
-    return cleanValue
+const fmtDate = (iso) => {
+  if (!iso) return '-'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleDateString('es-CO', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  })
+}
+
+const timeToMinutes = (time) => {
+  const [h, m] = String(time).split(':').map(Number)
+  return h * 60 + m
+}
+
+const getDurationMinutes = (startTime, endTime) => {
+  let start = timeToMinutes(startTime)
+  let end = timeToMinutes(endTime)
+
+  if (end <= start) {
+    end += 24 * 60
   }
 
-  // Por si algún navegador entrega 10:06 PM
-  const match = cleanValue.match(/^(\d{1,2}):(\d{2})\s?(AM|PM)$/i)
+  return end - start
+}
 
-  if (!match) {
-    return cleanValue
+const customerName = (reservation) =>
+  reservation?.clientRef?.fullname || reservation?.guest?.fullname || 'Sin cliente'
+
+const tableLabel = (tableId, tables) => {
+  const table = tables.find(t => t.table_id === tableId)
+  if (!table) return tableId || '-'
+  return `Mesa ${table.tableNumber}${table.zone ? ` - ${table.zone}` : ''}`
+}
+
+const getImageSrc = (imageUrl) => {
+  if (!imageUrl) return ''
+
+  if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+    return imageUrl
   }
 
-  let [, hour, minute, period] = match
-  hour = Number(hour)
-  period = period.toUpperCase()
-
-  if (period === 'PM' && hour !== 12) {
-    hour += 12
+  if (imageUrl.startsWith('/uploads')) {
+    return `${API_BASE_URL}${imageUrl}`
   }
 
-  if (period === 'AM' && hour === 12) {
-    hour = 0
-  }
+  return imageUrl
+}
 
-  return `${String(hour).padStart(2, '0')}:${minute}`
+const parseCollection = (res) => {
+  const d = res?.data?.data || res?.data
+  return Array.isArray(d) ? d : []
 }
 
 const getApiErrorMessage = (err, fallback = 'Error inesperado') => {
   const data = err.response?.data
-
-  const details = data?.errors
-    ?.map(e => `${e.field}: ${e.message}`)
-    .join('\n')
-
-  return `${data?.message || err.message || fallback}${details ? `\n\nDetalles:\n${details}` : ''}`
+  const details = data?.errors?.map(e => `${e.field}: ${e.message}`).join('\n')
+  return `${data?.message || err.message || fallback}${details ? `\n\n${details}` : ''}`
 }
 
-// ─── MODAL ────────────────────────────────────────────────────
-function Modal({ title, onClose, children, maxWidth = 560 }) {
-  return (
-    <div style={{
-      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-      background: 'rgba(0,0,0,0.5)', zIndex: 1000,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: 20
-    }}>
-      <div style={{
-        background: '#fff', borderRadius: 16, width: '100%', maxWidth,
-        maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)'
-      }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '20px 24px', borderBottom: '1px solid #E5E7EB'
-        }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>{title}</h2>
-          <button onClick={onClose} style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            color: '#6B7280', padding: 4, borderRadius: 6
-          }}>
-            <XCircle size={20} />
-          </button>
-        </div>
-        <div style={{ padding: 24 }}>
-          {children}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── BADGE ────────────────────────────────────────────────────
-function Badge({ status, map }) {
-  const s = map[status] || { label: status, color: '#666', bg: '#F3F4F6' }
+function StatusBadge({ status }) {
+  const cfg = ORDER_STATUS[status] || { label: status, color: '#666', bg: '#F3F4F6' }
   return (
     <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 4,
-      padding: '3px 10px', borderRadius: 99,
-      background: s.bg, color: s.color,
-      fontSize: 11, fontWeight: 600, textTransform: 'capitalize'
+      display: 'inline-flex', alignItems: 'center', gap: 5,
+      padding: '4px 10px', borderRadius: 99,
+      background: cfg.bg, color: cfg.color,
+      fontSize: 12, fontWeight: 600,
+      border: `1px solid ${cfg.color}25`, whiteSpace: 'nowrap'
     }}>
-      {s.label}
+      {cfg.label}
     </span>
   )
 }
 
-// ─── FIELD ────────────────────────────────────────────────────
-function Field({ label, required, children, style }) {
+function CategoryBadge({ category }) {
+  const cfg = CATEGORY_CONFIG[category] || CATEGORY_CONFIG.otro
+  const Icon = cfg.icon
+
   return (
-    <div style={{ marginBottom: 16, ...style }}>
-      <label style={{
-        display: 'block', fontSize: 11, fontWeight: 700,
-        color: 'var(--text-secondary)', marginBottom: 5,
-        textTransform: 'uppercase', letterSpacing: '0.5px'
-      }}>
-        {label}{required && <span style={{ color: 'var(--accent)', marginLeft: 2 }}>*</span>}
-      </label>
-      {children}
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 5,
+      padding: '3px 10px', borderRadius: 99,
+      background: cfg.bg, color: cfg.color,
+      fontSize: 12, fontWeight: 600,
+      border: `1px solid ${cfg.color}25`,
+      whiteSpace: 'nowrap'
+    }}>
+      <Icon size={11} />
+      {cfg.label}
+    </span>
+  )
+}
+
+function Modal({ title, onClose, children, maxWidth = 560 }) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 1000,
+      background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(2px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24
+    }} onClick={onClose}>
+      <div style={{
+        background: 'var(--bg-card)', borderRadius: 16,
+        width: '100%', maxWidth,
+        maxHeight: '90vh', overflowY: 'auto',
+        boxShadow: '0 24px 64px rgba(0,0,0,0.18)',
+        animation: 'modalIn 0.18s ease'
+      }} onClick={e => e.stopPropagation()}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '22px 24px 18px', borderBottom: '1.5px solid var(--border)'
+        }}>
+          <span style={{ fontFamily: 'var(--font-display)', fontSize: 22, letterSpacing: 0.3 }}>
+            {title}
+          </span>
+          <button onClick={onClose} style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: 'var(--text-secondary)', display: 'flex', padding: 4
+          }}>
+            <X size={18} />
+          </button>
+        </div>
+        <div style={{ padding: '20px 24px 24px' }}>{children}</div>
+      </div>
     </div>
   )
 }
@@ -146,53 +189,283 @@ const inputStyle = {
   width: '100%', padding: '10px 12px',
   border: '1.5px solid var(--border)', borderRadius: 8,
   fontSize: 14, fontFamily: 'var(--font-body)',
-  outline: 'none', background: '#fff',
-  color: 'var(--text-primary)', transition: 'border-color 0.15s',
-  boxSizing: 'border-box'
+  outline: 'none', background: 'var(--bg-panel)',
+  color: 'var(--text-primary)', boxSizing: 'border-box'
 }
 
-const SAMPLE_PRODUCTS = [
-  { product_id: 'p1', name: 'Mojito Clásico',      basePrice: 32000, category: 'coctel',  imageUrl: 'https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=400&q=80' },
-  { product_id: 'p2', name: 'Piña Colásico',          basePrice: 34000, category: 'coctel',  imageUrl: 'https://images.unsplash.com/photo-1571950006418-f9f522c22cfb?w=400&q=80' },
-  { product_id: 'p3', name: 'Gin Tonic',            basePrice: 30000, category: 'coctel',  imageUrl: 'https://images.unsplash.com/photo-1600334129128-685c5582fd35?w=400&q=80' },
-  { product_id: 'p4', name: 'Whisky Old Fashioned', basePrice: 38000, category: 'coctel',  imageUrl: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=400&q=80' },
-  { product_id: 'p5', name: 'Cerveza Corona',       basePrice: 12000, category: 'cerveza', imageUrl: 'https://images.unsplash.com/photo-1608270586620-248524c67de9?w=400&q=80' },
-  { product_id: 'p6', name: 'Cerveza Heineken',     basePrice: 13000, category: 'cerveza', imageUrl: 'https://images.unsplash.com/photo-1535958636474-b021ee887b13?w=400&q=80' },
-  { product_id: 'p7', name: 'Vino Tinto (Copa)',    basePrice: 22000, category: 'vino',    imageUrl: 'https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?w=400&q=80' },
-  { product_id: 'p8', name: 'Vino Blanco (Copa)',   basePrice: 22000, category: 'vino',    imageUrl: 'https://images.unsplash.com/photo-1474722883778-792e7990302f?w=400&q=80' },
-  { product_id: 'p9', name: 'Papas a la Francesa',  basePrice: 16000, category: 'snack',   imageUrl: 'https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=400&q=80' },
-  { product_id: 'p10', name: 'Alitas BBQ',          basePrice: 24000, category: 'snack',   imageUrl: 'https://images.unsplash.com/photo-1527477396000-e27163b481c2?w=400&q=80' },
-  { product_id: 'p11', name: 'Nachos Mixtos',       basePrice: 26000, category: 'snack',   imageUrl: 'https://images.unsplash.com/photo-1513456852971-30c0b8199d4d?w=400&q=80' },
-  { product_id: 'p12', name: 'Tabla de Quesos',     basePrice: 28000, category: 'especial',imageUrl: 'https://images.unsplash.com/photo-1452195100486-9cc805987862?w=400&q=80' },
-]
+function Field({ label, required, icon: Icon, children }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <label style={{
+        display: 'flex', alignItems: 'center', gap: 5,
+        fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)',
+        marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.5px'
+      }}>
+        {Icon && <Icon size={11} />}
+        {label}{required && <span style={{ color: 'var(--accent)' }}>*</span>}
+      </label>
+      {children}
+    </div>
+  )
+}
 
-// ─── RESERVATION MODAL ───────────────────────────────────────
-function ReservationModal({ reservations, tables, clients, onSelect, onCreate, onClose, search, onSearchChange, type, onTypeChange }) {
-  const [form, setForm] = useState({
-    table_id: '', date: '', startTime: '', endTime: '', peopleCount: 1, channel: 'presencial',
-    clientType: 'guest', clientRef: { fullname: '', docID: '' }, guest: { fullname: '', phone: '' }
+function ErrorBox({ message }) {
+  if (!message) return null
+  return (
+    <div style={{
+      background: '#FEE2E2', border: '1px solid #FECACA',
+      borderRadius: 8, padding: '10px 14px', marginBottom: 16,
+      fontSize: 13, color: '#B91C1C', whiteSpace: 'pre-line'
+    }}>
+      {message}
+    </div>
+  )
+}
+
+function OrderFormModal({ initial, onClose, onSave }) {
+  const [form, setForm] = useState(initial ? { ...initial } : EMPTY_ORDER_FORM)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const handleSubmit = async () => {
+    setError('')
+    if (!form.clientHint?.trim()) return setError('La referencia del cliente es obligatoria')
+
+    setSaving(true)
+    try {
+      await onSave(form)
+      onClose()
+    } catch (e) {
+      setError(getApiErrorMessage(e, 'Error al guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal title="Editar orden" onClose={onClose}>
+      <ErrorBox message={error} />
+
+      <Field label="Referencia del cliente" required icon={User}>
+        <input
+          style={inputStyle}
+          value={form.clientHint || ''}
+          onChange={e => set('clientHint', e.target.value)}
+          placeholder="Ej: Juan Perez"
+        />
+      </Field>
+
+      <Field label="Estado" required>
+        <select
+          style={{ ...inputStyle, cursor: 'pointer', appearance: 'auto' }}
+          value={form.status || 'abierto'}
+          onChange={e => set('status', e.target.value)}
+        >
+          <option value="abierto">Abierto</option>
+          <option value="enviado_cocina">Enviado a cocina</option>
+          <option value="en_preparacion">En preparacion</option>
+          <option value="listo">Listo</option>
+          <option value="servido">Servido</option>
+          <option value="cancelado">Cancelado</option>
+        </select>
+      </Field>
+
+      <Field label="Notas" icon={Hash}>
+        <textarea
+          style={{ ...inputStyle, resize: 'vertical', minHeight: 72 }}
+          value={form.notes || ''}
+          onChange={e => set('notes', e.target.value)}
+          placeholder="Notas adicionales de la orden..."
+        />
+      </Field>
+
+      <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+        <button className="btn-secondary" onClick={onClose} style={{ flex: 1 }}>Cancelar</button>
+        <button className="btn-primary" onClick={handleSubmit}
+          disabled={saving} style={{ flex: 2, opacity: saving ? 0.7 : 1 }}>
+          {saving ? 'Guardando...' : 'Guardar cambios'}
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
+function OrderDetailModal({ order, onClose }) {
+  if (!order) return null
+
+  return (
+    <Modal title={`Orden ${order.order_id}`} onClose={onClose} maxWidth={700}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+        <div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>Reserva</div>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>{order.reservation_id}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>Cliente</div>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>{order.clientHint || 'Sin referencia'}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>Estado</div>
+          <StatusBadge status={order.status} />
+        </div>
+        <div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>Fecha</div>
+          <div style={{ fontSize: 14 }}>{fmtDate(order.createdAt)}</div>
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Items de la orden</div>
+        <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+          {order.items?.map((item, i) => (
+            <div key={`${item.product_id}-${i}`} style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '12px 16px', borderBottom: i < order.items.length - 1 ? '1px solid var(--border-light)' : 'none'
+            }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>{item.name}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                  {item.quantity} x {fmt(item.unitPrice)}
+                </div>
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>{fmt(item.quantity * item.unitPrice)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', background: 'var(--bg-main)', borderRadius: 8 }}>
+        <div style={{ fontSize: 16, fontWeight: 600 }}>Total</div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--accent)' }}>{fmt(order.totalAmount)}</div>
+      </div>
+
+      {order.notes && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>Notas</div>
+          <div style={{ fontSize: 14, padding: '8px 12px', background: 'var(--bg-main)', borderRadius: 6 }}>
+            {order.notes}
+          </div>
+        </div>
+      )}
+    </Modal>
+  )
+}
+
+function ConfirmDeleteModal({ order, onClose, onConfirm }) {
+  const [loading, setLoading] = useState(false)
+  return (
+    <Modal title="Eliminar orden" onClose={onClose} maxWidth={420}>
+      <div style={{ textAlign: 'center', padding: '8px 0 20px' }}>
+        <ShoppingBag size={48} style={{ color: 'var(--text-secondary)', marginBottom: 14 }} />
+        <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>
+          Eliminar orden <span style={{ color: 'var(--accent)' }}>{order.order_id}</span>?
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+          Esta accion cancela la orden si el backend lo permite.
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button className="btn-secondary" onClick={onClose} style={{ flex: 1 }}>Cancelar</button>
+        <button
+          disabled={loading}
+          onClick={async () => { setLoading(true); await onConfirm(); setLoading(false) }}
+          style={{
+            flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            background: '#EF4444', color: '#fff', border: 'none',
+            borderRadius: 8, padding: '13px 20px', fontSize: 15, fontWeight: 600,
+            cursor: 'pointer', opacity: loading ? 0.7 : 1
+          }}>
+          <Trash2 size={15} />
+          {loading ? 'Eliminando...' : 'Si, eliminar'}
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
+function StartOrderModal({ onClose, onCreateReservation, onChooseReservation }) {
+  return (
+    <Modal title="Crear orden" onClose={onClose} maxWidth={560}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <button
+          onClick={onCreateReservation}
+          style={{
+            border: '1.5px solid var(--border)', background: 'var(--bg-panel)',
+            borderRadius: 12, padding: 18, textAlign: 'left', cursor: 'pointer'
+          }}
+        >
+          <Plus size={22} color="#1D4ED8" />
+          <div style={{ fontWeight: 700, marginTop: 12, marginBottom: 5 }}>Crear reserva</div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.45 }}>
+            Registra una reserva nueva y continua con la orden.
+          </div>
+        </button>
+
+        <button
+          onClick={onChooseReservation}
+          style={{
+            border: '1.5px solid var(--border)', background: 'var(--bg-panel)',
+            borderRadius: 12, padding: 18, textAlign: 'left', cursor: 'pointer'
+          }}
+        >
+          <CalendarDays size={22} color="#065F46" />
+          <div style={{ fontWeight: 700, marginTop: 12, marginBottom: 5 }}>Elegir reserva</div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.45 }}>
+            Selecciona una reserva confirmada o en curso.
+          </div>
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
+function ReservationFormModal({ initial, tables, clients, onClose, onSave }) {
+  const isEdit = !!initial?.reservation_id
+
+  const [form, setForm] = useState(() => {
+    if (initial) {
+      return {
+        ...initial,
+        clientType: initial.clientRef ? 'registered' : 'guest',
+        clientRef: initial.clientRef ? { ...initial.clientRef } : { fullname: '', docID: '' },
+        guest: initial.guest ? { ...initial.guest } : { fullname: '', phone: '', notes: '' },
+        appliedCoupons: initial.appliedCoupons || []
+      }
+    }
+    return {
+      ...EMPTY_RESERVATION_FORM,
+      clientType: 'guest',
+      clientRef: { fullname: '', docID: '' }
+    }
   })
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
   const [clientSearch, setClientSearch] = useState('')
-  const [selectedClient, setSelectedClient] = useState(null)
+  const [selectedClient, setSelectedClient] = useState(initial?.clientRef ? { ...initial.clientRef } : null)
+  const [couponCode, setCouponCode] = useState('')
+  const [couponLoading, setCouponLoading] = useState(false)
+  const [couponError, setCouponError] = useState('')
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const setGuest = (k, v) => setForm(f => ({ ...f, guest: { ...f.guest, [k]: v } }))
 
-  const handleClientTypeChange = (t) => {
-    set('clientType', t)
+  const handleClientTypeChange = (type) => {
     setForm(f => ({
       ...f,
-      clientType: t,
-      ...(t === 'registered' ? { clientRef: { fullname: '', docID: '' }, guest: { fullname: '', phone: '', notes: '' } } : { guest: { fullname: '', phone: '', notes: '' }, clientRef: { fullname: '', docID: '' } })
+      clientType: type,
+      ...(type === 'registered'
+        ? { clientRef: { fullname: '', docID: '' }, guest: { fullname: '', phone: '', notes: '' } }
+        : { guest: { fullname: '', phone: '', notes: '' }, clientRef: { fullname: '', docID: '' } })
     }))
-    setSelectedClient(null)
+    setSelectedClient(type === 'registered' && initial?.clientRef ? { ...initial.clientRef } : null)
     setClientSearch('')
   }
 
   const filteredClients = clients.filter(c => {
     const term = clientSearch.toLowerCase()
-    return c.fullname.toLowerCase().includes(term) || c.docID.toLowerCase().includes(term)
+    return c.fullname?.toLowerCase().includes(term) || c.docID?.toLowerCase().includes(term)
   })
 
   const selectClient = (client) => {
@@ -200,716 +473,1404 @@ function ReservationModal({ reservations, tables, clients, onSelect, onCreate, o
     setForm(f => ({ ...f, clientRef: { fullname: client.fullname, docID: client.docID } }))
   }
 
+  const handleSearchCoupon = async () => {
+    if (!couponCode.trim()) {
+      setCouponError('Ingresa un codigo de cupon')
+      return
+    }
+
+    setCouponLoading(true)
+    setCouponError('')
+    try {
+      const res = await api.get(`/discounts?code=${couponCode.trim().toUpperCase()}`)
+      const coupons = res.data?.data || []
+
+      if (coupons.length === 0) {
+        setCouponError('Cupon no encontrado')
+        setCouponLoading(false)
+        return
+      }
+
+      const coupon = coupons[0]
+      const now = new Date()
+      const validFrom = new Date(coupon.validFrom)
+      const validUntil = new Date(coupon.validUntil)
+
+      if (!coupon.active) {
+        setCouponError('Este cupon esta inactivo')
+        setCouponLoading(false)
+        return
+      }
+
+      if (now < validFrom) {
+        setCouponError('Este cupon aun no esta disponible')
+        setCouponLoading(false)
+        return
+      }
+
+      if (now > validUntil) {
+        setCouponError('Este cupon ha expirado')
+        setCouponLoading(false)
+        return
+      }
+
+      if (coupon.maxUses && coupon.usedCount >= coupon.maxUses) {
+        setCouponError('Este cupon ha alcanzado el limite de usos')
+        setCouponLoading(false)
+        return
+      }
+
+      if (form.appliedCoupons?.some(c => c.discount_id === coupon.discount_id)) {
+        setCouponError('Este cupon ya esta aplicado')
+        setCouponLoading(false)
+        return
+      }
+
+      const appliedCoupon = {
+        discount_id: coupon.discount_id,
+        code: coupon.code,
+        name: coupon.name,
+        type: coupon.type,
+        value: coupon.value,
+        stackable: coupon.stackable,
+        consumed: false,
+        appliedAt: new Date().toISOString()
+      }
+
+      setForm(f => ({
+        ...f,
+        appliedCoupons: [...(f.appliedCoupons || []), appliedCoupon]
+      }))
+
+      setCouponCode('')
+      setCouponError('')
+    } catch {
+      setCouponError('Error al buscar el cupon')
+    } finally {
+      setCouponLoading(false)
+    }
+  }
+
+  const removeCoupon = (discountId) => {
+    setForm(f => ({
+      ...f,
+      appliedCoupons: (f.appliedCoupons || []).filter(c => c.discount_id !== discountId)
+    }))
+  }
+
   const handleSubmit = async () => {
-    if (type === 'create') {
-      if (!form.table_id || !form.date || !form.startTime || !form.endTime) {
-        alert('Completa todos los campos obligatorios')
-        return
-      }
-      if (form.clientType === 'registered' && !selectedClient?.docID) {
-        alert('Selecciona un cliente registrado')
-        return
-      }
-      if (form.clientType === 'guest' && !form.guest.fullname) {
-        alert('Ingresa el nombre del invitado')
-        return
-      }
-      setSaving(true)
-      try {
-        await onCreate(form)
-      } catch (e) {
-        // Error handled in parent
-      } finally {
-        setSaving(false)
-      }
+    setError('')
+    if (!form.table_id) return setError('Selecciona una mesa')
+    if (!form.date) return setError('La fecha es obligatoria')
+    if (!form.startTime) return setError('La hora de inicio es obligatoria')
+    if (!form.endTime) return setError('La hora de fin es obligatoria')
+
+    const duration = getDurationMinutes(form.startTime, form.endTime)
+
+    if (duration < 30) {
+      return setError('La reserva debe tener una duracion minima de 30 minutos')
+    }
+
+    if (duration > 480) {
+      return setError('La reserva no puede exceder 8 horas')
+    }
+
+    if (form.clientType === 'registered') {
+      if (!selectedClient?.docID) return setError('Selecciona un cliente registrado')
+    } else {
+      if (!form.guest?.fullname) return setError('El nombre del cliente invitado es obligatorio')
+    }
+
+    setSaving(true)
+    try {
+      await onSave(form)
+      onClose()
+    } catch (e) {
+      setError(getApiErrorMessage(e, 'Error al guardar'))
+    } finally {
+      setSaving(false)
     }
   }
 
   const activeTables = tables.filter(t => t.active !== false)
 
   return (
-    <Modal title="Seleccionar o crear reserva" onClose={onClose} maxWidth={700}>
-      <div style={{ display: 'flex', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
-        {['select', 'create'].map(t => (
-          <button key={t}
-            onClick={() => onTypeChange(t)}
+    <Modal title={isEdit ? 'Editar reservacion' : 'Nueva reservacion'} onClose={onClose}>
+      {error && (
+        <div style={{
+          background: '#FEE2E2', border: '1px solid #FECACA',
+          borderRadius: 8, padding: '10px 14px', marginBottom: 16,
+          fontSize: 13, color: '#B91C1C', display: 'flex', alignItems: 'center', gap: 8
+        }}>
+          <X size={14} /> {error}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 10, marginBottom: 18, flexWrap: 'wrap' }}>
+        {['registered', 'guest'].map(type => (
+          <button key={type}
+            type="button"
+            onClick={() => handleClientTypeChange(type)}
             style={{
-              flex: 1, minWidth: 140, padding: '12px 14px', borderRadius: 10,
-              border: `1.5px solid ${type === t ? '#2563EB' : 'var(--border)'}`,
-              background: type === t ? '#DBEAFE' : '#fff',
-              color: type === t ? '#1D4ED8' : 'var(--text-primary)',
-              cursor: 'pointer', fontWeight: 700
+              flex: 1,
+              minWidth: 140,
+              padding: '12px 14px',
+              borderRadius: 10,
+              border: `1.5px solid ${form.clientType === type ? '#2563EB' : 'var(--border)'}`,
+              background: form.clientType === type ? '#DBEAFE' : '#fff',
+              color: form.clientType === type ? '#1D4ED8' : 'var(--text-primary)',
+              cursor: 'pointer',
+              fontWeight: 700
             }}
           >
-            {t === 'select' ? 'Elegir reserva existente' : 'Crear nueva reserva'}
+            {type === 'registered' ? 'Cliente registrado' : 'Invitado'}
           </button>
         ))}
       </div>
 
-      {type === 'select' ? (
-        <>
-          <Field label="Buscar reserva">
-            <input style={inputStyle} value={search}
-              onChange={e => onSearchChange(e.target.value)}
-              placeholder="Buscar por ID de reserva..." />
-          </Field>
-
-          <div style={{ maxHeight: 300, overflow: 'auto', marginTop: 16 }}>
-            {reservations.length === 0 ? (
-              <div style={{ padding: 20, color: 'var(--text-secondary)', textAlign: 'center' }}>
-                No se encontraron reservas activas
-              </div>
-            ) : (
-              reservations.map(res => {
-                const name = res.guest?.fullname || res.clientRef?.fullname || 'Sin nombre'
-                const table = tables.find(t => t.table_id === res.table_id)
-                return (
-                  <button key={res.reservation_id} onClick={() => onSelect(res)}
-                    style={{
-                      width: '100%', padding: '14px 16px', marginBottom: 8,
-                      borderRadius: 10, border: '1.5px solid var(--border)',
-                      background: '#fff', cursor: 'pointer', textAlign: 'left'
-                    }}>
-                    <div style={{ fontWeight: 700 }}>{res.reservation_id}</div>
-                    <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 2 }}>
-                      {name} • {res.peopleCount} personas
-                    </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                      {fmtDate(res.date)} {res.startTime}-{res.endTime} • Mesa {table?.tableNumber || res.table_id}
-                    </div>
-                  </button>
-                )
-              })
-            )}
-          </div>
-        </>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
-          <div style={{ gridColumn: '1 / -1' }}>
-            <Field label="Mesa" required>
-              <select style={{ ...inputStyle, cursor: 'pointer' }} value={form.table_id}
-                onChange={e => set('table_id', e.target.value)}>
-                <option value="">Seleccionar mesa...</option>
-                {activeTables.map(t => (
-                  <option key={t.table_id} value={t.table_id}>
-                    Mesa {t.tableNumber} — {t.zone} (cap. {t.capacity})
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-
-          <Field label="Fecha" required>
-            <input style={inputStyle} type="date" value={form.date}
-              onChange={e => set('date', e.target.value)} />
-          </Field>
-
-          <Field label="Personas" required>
-            <input style={inputStyle} type="number" min={1} max={50} value={form.peopleCount}
-              onChange={e => set('peopleCount', Number(e.target.value))} />
-          </Field>
-
-          <Field label="Hora inicio" required>
-            <input style={inputStyle} type="time" value={form.startTime}
-              onChange={e => set('startTime', e.target.value)} />
-          </Field>
-
-          <Field label="Hora fin" required>
-            <input style={inputStyle} type="time" value={form.endTime}
-              onChange={e => set('endTime', e.target.value)} />
-          </Field>
-
-          <Field label="Canal">
-            <select style={{ ...inputStyle, cursor: 'pointer' }} value={form.channel}
-              onChange={e => set('channel', e.target.value)}>
-              <option value="telefono">Teléfono</option>
-              <option value="web">Web</option>
-              <option value="presencial">Presencial</option>
-              <option value="app">App</option>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
+        <div style={{ gridColumn: '1 / -1' }}>
+          <Field label="Mesa" required>
+            <select
+              style={{ ...inputStyle, cursor: 'pointer', appearance: 'auto' }}
+              value={form.table_id}
+              onChange={e => set('table_id', e.target.value)}
+            >
+              <option value="">Seleccionar mesa...</option>
+              {activeTables.map(t => (
+                <option key={t.table_id} value={t.table_id}>
+                  Mesa {t.tableNumber} - {t.zone} (cap. {t.capacity} personas)
+                </option>
+              ))}
             </select>
           </Field>
+        </div>
 
-          <div style={{ gridColumn: '1 / -1', marginTop: 16 }}>
-            <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-              {['registered', 'guest'].map(t => (
-                <button key={t} onClick={() => handleClientTypeChange(t)}
-                  style={{
-                    flex: 1, padding: '10px 12px', borderRadius: 8,
-                    border: `1.5px solid ${form.clientType === t ? '#2563EB' : 'var(--border)'}`,
-                    background: form.clientType === t ? '#DBEAFE' : '#fff',
-                    color: form.clientType === t ? '#1D4ED8' : 'var(--text-primary)',
-                    cursor: 'pointer', fontWeight: 600
-                  }}>
-                  {t === 'registered' ? 'Cliente registrado' : 'Invitado'}
-                </button>
+        <Field label="Fecha" required>
+          <input style={inputStyle} type="date" value={form.date}
+            onChange={e => set('date', e.target.value)} />
+        </Field>
+
+        <Field label="Personas" required>
+          <input style={inputStyle} type="number" min={1} max={50} value={form.peopleCount}
+            onChange={e => set('peopleCount', Number(e.target.value))} />
+        </Field>
+
+        <Field label="Hora inicio" required>
+          <input style={inputStyle} type="time" value={form.startTime}
+            onChange={e => set('startTime', e.target.value)} />
+        </Field>
+
+        <Field label="Hora fin" required>
+          <input style={inputStyle} type="time" value={form.endTime}
+            onChange={e => set('endTime', e.target.value)} />
+        </Field>
+
+        <Field label="Canal">
+          <select style={{ ...inputStyle, cursor: 'pointer', appearance: 'auto' }}
+            value={form.channel} onChange={e => set('channel', e.target.value)}>
+            <option value="">Seleccionar...</option>
+            <option value="telefono">Telefono</option>
+            <option value="web">Web</option>
+            <option value="presencial">Presencial</option>
+            <option value="app">App</option>
+          </select>
+        </Field>
+
+        {isEdit && (
+          <Field label="Estado">
+            <select style={{ ...inputStyle, cursor: 'pointer', appearance: 'auto' }}
+              value={form.status} onChange={e => set('status', e.target.value)}>
+              {Object.entries(STATUS_CONFIG).map(([k, v]) => (
+                <option key={k} value={k}>{v.label}</option>
               ))}
-            </div>
+            </select>
+          </Field>
+        )}
+      </div>
 
-            {form.clientType === 'registered' ? (
-              <>
-                <Field label="Buscar cliente" required>
-                  <input style={inputStyle} value={clientSearch}
-                    onChange={e => setClientSearch(e.target.value)}
-                    placeholder="Nombre o documento" />
-                </Field>
+      <div style={{ borderTop: '1.5px solid var(--border)', paddingTop: 16, marginTop: 4, marginBottom: 14 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>
+          Datos del cliente
+        </div>
 
-                {selectedClient ? (
-                  <div style={{ background: '#F3F4F6', borderRadius: 10, padding: 12, marginTop: 12 }}>
-                    <div style={{ fontWeight: 700 }}>{selectedClient.fullname}</div>
+        {form.clientType === 'registered' ? (
+          <>
+            <Field label="Buscar cliente registrado" required>
+              <input style={inputStyle} value={clientSearch}
+                onChange={e => setClientSearch(e.target.value)}
+                placeholder="Buscar por nombre o documento" />
+            </Field>
+
+            {selectedClient ? (
+              <div style={{ gridColumn: '1 / -1', background: '#F3F4F6', border: '1.5px solid var(--border)', borderRadius: 12, padding: 14, marginBottom: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Cliente seleccionado</div>
+                    <div style={{ fontSize: 15, fontWeight: 700 }}>{selectedClient.fullname}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{selectedClient.docID}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{selectedClient.phone}</div>
                   </div>
+                  <button type="button" onClick={() => { setSelectedClient(null); setForm(f => ({ ...f, clientRef: { fullname: '', docID: '' } })) }}
+                    style={{ border: '1.5px solid var(--border)', borderRadius: 10, padding: '10px 14px', background: 'var(--bg-panel)', cursor: 'pointer' }}>
+                    Cambiar cliente
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ gridColumn: '1 / -1' }}>
+                {filteredClients.length === 0 ? (
+                  <div style={{ padding: 14, color: 'var(--text-secondary)', fontSize: 13 }}>No se encontraron clientes.</div>
                 ) : (
-                  <div style={{ maxHeight: 150, overflow: 'auto', marginTop: 12 }}>
+                  <div style={{ display: 'grid', gap: 10, marginBottom: 14 }}>
                     {filteredClients.map(client => (
-                      <button key={client.docID} onClick={() => selectClient(client)}
+                      <button key={client.docID} type="button" onClick={() => selectClient(client)}
                         style={{
-                          width: '100%', padding: '8px 12px', marginBottom: 4,
-                          borderRadius: 8, border: '1px solid var(--border)',
-                          background: '#fff', cursor: 'pointer', textAlign: 'left'
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '12px 14px', borderRadius: 12, border: '1.5px solid var(--border)',
+                          background: 'var(--bg-panel)', cursor: 'pointer', textAlign: 'left'
                         }}>
-                        <div style={{ fontWeight: 600 }}>{client.fullname}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{client.docID}</div>
+                        <div>
+                          <div style={{ fontWeight: 700 }}>{client.fullname}</div>
+                          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{client.docID} - {client.phone || 'Sin telefono'}</div>
+                        </div>
+                        <span style={{ color: '#2563EB', fontWeight: 700 }}>Seleccionar</span>
                       </button>
                     ))}
                   </div>
                 )}
-              </>
-            ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
-                <Field label="Nombre" required>
-                  <input style={inputStyle} value={form.guest.fullname}
-                    onChange={e => setGuest('fullname', e.target.value)}
-                    placeholder="Nombre completo" />
-                </Field>
-                <Field label="Teléfono">
-                  <input style={inputStyle} value={form.guest.phone}
-                    onChange={e => setGuest('phone', e.target.value)}
-                    placeholder="3001234567" />
-                </Field>
               </div>
             )}
+          </>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
+            <Field label="Nombre" required>
+              <input style={inputStyle} value={form.guest?.fullname || ''}
+                onChange={e => setGuest('fullname', e.target.value)}
+                placeholder="Nombre completo" />
+            </Field>
+            <Field label="Telefono">
+              <input style={inputStyle} value={form.guest?.phone || ''}
+                onChange={e => setGuest('phone', e.target.value)}
+                placeholder="3001234567" />
+            </Field>
           </div>
+        )}
+      </div>
+
+      {form.clientType === 'registered' && selectedClient && (
+        <div style={{ gridColumn: '1 / -1', marginBottom: 14 }}>
+          <Field label="Cliente registrado" required>
+            <input style={inputStyle} value={selectedClient.fullname} readOnly />
+          </Field>
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 10, marginTop: 24 }}>
+      <Field label="Notas">
+        <textarea style={{ ...inputStyle, resize: 'vertical', minHeight: 68 }}
+          value={form.notes || ''} onChange={e => set('notes', e.target.value)}
+          placeholder="Peticiones especiales, alergias, ocasion especial..." />
+      </Field>
+
+      <div style={{ borderTop: '1.5px solid var(--border)', paddingTop: 16, marginTop: 16, marginBottom: 16 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>
+          Cupones y descuentos
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+          <div style={{ flex: 1 }}>
+            <input
+              style={inputStyle}
+              value={couponCode}
+              onChange={e => { setCouponCode(e.target.value); setCouponError('') }}
+              onKeyDown={e => e.key === 'Enter' && handleSearchCoupon()}
+              placeholder="Ingresa codigo de cupon..."
+              disabled={couponLoading}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={handleSearchCoupon}
+            disabled={couponLoading || !couponCode.trim()}
+            style={{
+              padding: '10px 14px', borderRadius: 8,
+              background: '#2563EB', color: '#fff', border: 'none',
+              cursor: 'pointer', fontWeight: 600, fontSize: 13,
+              opacity: couponLoading || !couponCode.trim() ? 0.5 : 1
+            }}
+          >
+            {couponLoading ? 'Buscando...' : 'Aplicar'}
+          </button>
+        </div>
+
+        {couponError && (
+          <div style={{
+            background: '#FEE2E2', border: '1px solid #FECACA',
+            borderRadius: 8, padding: '8px 12px', marginBottom: 12,
+            fontSize: 12, color: '#B91C1C'
+          }}>
+            {couponError}
+          </div>
+        )}
+
+        {form.appliedCoupons && form.appliedCoupons.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {form.appliedCoupons.map(coupon => (
+              <div key={coupon.discount_id} style={{
+                background: '#F0FDF4', border: '1.5px solid #86EFAC',
+                borderRadius: 10, padding: 12, display: 'flex',
+                justifyContent: 'space-between', alignItems: 'center'
+              }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#166534' }}>
+                    {coupon.name}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#4ADE80' }}>
+                    Codigo: <strong>{coupon.code}</strong> - 
+                    {coupon.type === 'percentage' ? ` ${coupon.value}%` : ` $${Number(coupon.value).toLocaleString('es-CO')}`}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeCoupon(coupon.discount_id)}
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: '#16A34A', padding: '8px'
+                  }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{
+            padding: 12, textAlign: 'center', color: 'var(--text-secondary)',
+            fontSize: 13, background: 'var(--bg-main)', borderRadius: 8
+          }}>
+            Sin cupones aplicados
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
         <button className="btn-secondary" onClick={onClose} style={{ flex: 1 }}>
           Cancelar
         </button>
-        {type === 'create' && (
-          <button className="btn-primary" onClick={handleSubmit}
-            disabled={saving} style={{ flex: 2, opacity: saving ? 0.7 : 1 }}>
-            {saving ? 'Creando...' : 'Crear reserva'}
-          </button>
-        )}
+        <button className="btn-primary" onClick={handleSubmit}
+          disabled={saving}
+          style={{ flex: 2, opacity: saving ? 0.7 : 1 }}>
+          {saving ? 'Guardando...' : isEdit ? 'Guardar cambios' : 'Crear reservacion'}
+        </button>
       </div>
     </Modal>
   )
 }
 
-export default function Orders() {
-  const [products, setProducts]   = useState(SAMPLE_PRODUCTS)
-  const [search, setSearch]       = useState('')
-  const [category, setCategory]   = useState('todos')
-  const [orderItems, setOrderItems] = useState([])
-  const [loading, setLoading]     = useState(false)
-  const [error, setError]         = useState(null)
-
-  // Estado para reservas y órdenes
-  const [reservations, setReservations] = useState([])
-  const [tables, setTables]             = useState([])
-  const [clients, setClients]           = useState([])
-  const [selectedReservation, setSelectedReservation] = useState(null)
-  const [showReservationModal, setShowReservationModal] = useState(false)
-  const [reservationSearch, setReservationSearch] = useState('')
-  const [reservationType, setReservationType] = useState('select') // 'select' o 'create'
-  const [reservationOrders, setReservationOrders] = useState([])
-  const [selectedOrder, setSelectedOrder] = useState(null)
-  const [showOrderModal, setShowOrderModal] = useState(false)
-  const [orderModalMode, setOrderModalMode] = useState('create') // 'create' o 'edit'
-
-  // Cargar productos desde la API
-  useEffect(() => {
-    setLoading(true)
-    api.get('/products')
-      .then(res => {
-        const data = res.data?.data || res.data
-        if (Array.isArray(data) && data.length > 0) {
-          setProducts(data)
-        }
-        // Si no hay datos en la API, se mantienen los de ejemplo
-      })
-      .catch(() => {
-        // Si la API no responde, se mantienen los productos de ejemplo
-      })
-      .finally(() => setLoading(false))
-  }, [])
-
-  // Cargar reservas, mesas y clientes
-  useEffect(() => {
-    const loadData = async () => {
-      const [resResult, tablesResult, clientsResult] = await Promise.allSettled([
-        api.get('/reservations'),
-        api.get('/tables'),
-        api.get('/clients')
-      ])
-
-      if (resResult.status === 'fulfilled') {
-        const d = resResult.value.data?.data || resResult.value.data
-        setReservations(Array.isArray(d) && d.length > 0 ? d : [])
-      }
-
-      if (tablesResult.status === 'fulfilled') {
-        const d = tablesResult.value.data?.data || tablesResult.value.data
-        setTables(Array.isArray(d) && d.length > 0 ? d : [])
-      }
-
-      if (clientsResult.status === 'fulfilled') {
-        const d = clientsResult.value.data?.data || clientsResult.value.data
-        setClients(Array.isArray(d) && d.length > 0 ? d : [])
-      }
-    }
-    loadData()
-  }, [])
-
-  // Filtrar productos
-  const filtered = products.filter(p => {
-    const matchSearch = p.name.toLowerCase().includes(search.toLowerCase())
-    const matchCat = category === 'todos' || p.subcategory === category || p.category === category
-    return matchSearch && matchCat
+function ChooseReservationModal({ reservations, tables, onClose, onSelect }) {
+  const [query, setQuery] = useState('')
+  const available = reservations.filter(res => {
+    const q = query.toLowerCase()
+    const name = customerName(res).toLowerCase()
+    return RESERVATION_STATUSES_FOR_ORDERS.includes(res.status) && (
+      res.reservation_id?.toLowerCase().includes(q) ||
+      name.includes(q) ||
+      res.table_id?.toLowerCase().includes(q)
+    )
   })
 
-  // Agregar producto al pedido
-  const handleAddProduct = (product) => {
-    setOrderItems(prev => {
-      const idx = prev.findIndex(i => i.product_id === product.product_id)
-      if (idx >= 0) {
-        const updated = [...prev]
-        updated[idx] = { ...updated[idx], quantity: updated[idx].quantity + 1 }
-        return updated
+  return (
+    <Modal title="Elegir reserva" onClose={onClose} maxWidth={860}>
+      <div className="search-bar" style={{ marginBottom: 14 }}>
+        <Search size={15} />
+        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar por cliente, reserva o mesa..." />
+      </div>
+
+      <div style={{ border: '1.5px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+        {available.length === 0 ? (
+          <div style={{ padding: 28, textAlign: 'center', color: 'var(--text-secondary)' }}>
+            No hay reservas disponibles
+          </div>
+        ) : available.map(res => (
+          <button
+            key={res.reservation_id}
+            onClick={() => onSelect(res)}
+            style={{
+              width: '100%', border: 'none', borderBottom: '1px solid var(--border-light)',
+              background: 'var(--bg-panel)', padding: '13px 16px', cursor: 'pointer',
+              display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 100px',
+              gap: 12, alignItems: 'center', textAlign: 'left'
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>{customerName(res)}</div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{res.reservation_id}</div>
+            </div>
+            <div style={{ fontSize: 13 }}>{tableLabel(res.table_id, tables)}</div>
+            <div style={{ fontSize: 13 }}>{res.date} - {res.startTime}</div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, fontWeight: 700 }}>
+              <Users size={13} /> {res.peopleCount}
+            </div>
+          </button>
+        ))}
+      </div>
+    </Modal>
+  )
+}
+
+function OrderProductCard({ product, onAdd, index }) {
+  const [imgErr, setImgErr] = useState(false)
+
+  return (
+    <div style={{
+      background: 'var(--bg-card)',
+      border: '1.5px solid var(--border-light)',
+      borderRadius: 14,
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column',
+      transition: 'box-shadow 0.15s, transform 0.15s',
+      animation: `fadeIn 0.2s ease ${index * 0.04}s both`,
+      position: 'relative'
+    }}
+      onMouseEnter={e => {
+        e.currentTarget.style.boxShadow = '0 6px 24px rgba(0,0,0,0.10)'
+        e.currentTarget.style.transform = 'translateY(-2px)'
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.boxShadow = 'none'
+        e.currentTarget.style.transform = 'none'
+      }}
+    >
+      <button
+        title="Agregar a la orden"
+        onClick={() => onAdd(product)}
+        style={{
+          position: 'absolute',
+          top: 10,
+          right: 10,
+          zIndex: 2,
+          width: 34,
+          height: 34,
+          borderRadius: 8,
+          border: 'none',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#1D4ED8',
+          color: '#fff',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.16)'
+        }}
+      >
+        <Plus size={16} />
+      </button>
+
+      <div style={{
+        width: '100%',
+        aspectRatio: '4/3',
+        background: 'var(--bg-main)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden'
+      }}>
+        {product.imageUrl && !imgErr ? (
+          <img
+            src={getImageSrc(product.imageUrl)}
+            alt={product.name}
+            onError={() => setImgErr(true)}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        ) : (
+          <div style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+            <ImageOff size={36} style={{ opacity: 0.25 }} />
+          </div>
+        )}
+      </div>
+
+      <div style={{ padding: '12px 14px 14px', flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3 }}>
+            {product.name}
+          </div>
+          <CategoryBadge category={product.category} />
+        </div>
+
+        {product.description && (
+          <div style={{
+            fontSize: 12,
+            color: 'var(--text-secondary)',
+            lineHeight: 1.4,
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden'
+          }}>
+            {product.description}
+          </div>
+        )}
+
+        <div style={{
+          marginTop: 'auto',
+          paddingTop: 8,
+          borderTop: '1px solid var(--border-light)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 1 }}>Precio</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)' }}>
+              {fmt(product.basePrice)}
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', textAlign: 'right' }}>
+            {product.product_id}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CreateOrderModal({ reservation, tables, products, onClose, onCreate }) {
+  const [cart, setCart] = useState([])
+  const [note, setNote] = useState('')
+  const [query, setQuery] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const filteredProducts = products.filter(p => {
+    const q = query.toLowerCase()
+    return p.active !== false && (
+      p.name?.toLowerCase().includes(q) ||
+      p.category?.toLowerCase().includes(q) ||
+      p.subcategory?.toLowerCase().includes(q)
+    )
+  })
+
+  const addProduct = (product) => {
+    setCart(prev => {
+      const current = prev.find(item => item.product_id === product.product_id)
+      if (current) {
+        return prev.map(item => item.product_id === product.product_id
+          ? { ...item, quantity: item.quantity + 1 }
+          : item
+        )
       }
       return [...prev, {
         product_id: product.product_id,
         name: product.name,
-        unitPrice: product.basePrice,
-        quantity: 1
+        quantity: 1,
+        unitPrice: product.basePrice
       }]
     })
   }
 
-  // Cambiar cantidad
-  const handleQtyChange = (idx, qty) => {
-    if (qty <= 0) {
-      handleRemove(idx)
+  const updateQty = (productId, quantity) => {
+    if (quantity <= 0) {
+      setCart(prev => prev.filter(item => item.product_id !== productId))
       return
     }
-    setOrderItems(prev => {
-      const updated = [...prev]
-      updated[idx] = { ...updated[idx], quantity: qty }
-      return updated
-    })
+    setCart(prev => prev.map(item => item.product_id === productId ? { ...item, quantity } : item))
   }
 
-  // Eliminar item
-  const handleRemove = (idx) => {
-    setOrderItems(prev => prev.filter((_, i) => i !== idx))
-  }
+  const total = cart.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0)
 
-  // Enviar a cocina → POST /api/orders
-  const handleSend = async ({ items, note, guests }) => {
-    if (items.length === 0) return
-    if (!selectedReservation) {
-      alert('❌ Selecciona una reserva primero')
-      return
-    }
+  const submit = async () => {
+    setError('')
+    if (cart.length === 0) return setError('Agrega al menos un producto')
+
+    setSaving(true)
     try {
-      const payload = {
-        reservation_id: selectedReservation.reservation_id,
-        clientHint: `${guests} personas`,
-        notes: note,
-        items: items.map(i => ({
-          product_id: i.product_id,
-          name: i.name,
-          quantity: i.quantity,
-          unitPrice: i.unitPrice
-        }))
-      }
-      const res = await api.post('/orders', payload)
-      alert(`✅ Pedido ${res.data.order_id} enviado a cocina`)
-      setOrderItems([])
-      // Recargar reservas para actualizar órdenes
-      const resResult = await api.get('/reservations')
-      const d = resResult.data?.data || resResult.data
-      setReservations(Array.isArray(d) && d.length > 0 ? d : [])
+      await onCreate({
+        reservation_id: reservation.reservation_id,
+        notes: note.trim(),
+        items: cart
+      })
+      onClose()
     } catch (err) {
-      alert(`❌ Error: ${err.response?.data?.message || err.message}`)
+      setError(getApiErrorMessage(err, 'Error creando orden'))
+    } finally {
+      setSaving(false)
     }
-  }
-
-  // Pagar
-  const handlePay = ({ total }) => {
-    if (!selectedReservation) {
-      alert('❌ Selecciona una reserva primero')
-      return
-    }
-    alert(`💳 Total a pagar: $${Number(total).toLocaleString('es-CO')}`)
-    // TODO: abrir modal de pago
-  }
-
-  // Seleccionar reserva
-  const handleSelectReservation = async (reservation) => {
-    setSelectedReservation(reservation)
-    setShowReservationModal(false)
-
-    // Cargar órdenes de la reserva
-    try {
-      const response = await api.get(`/orders?reservation_id=${reservation.reservation_id}`)
-      const orders = response.data?.data || response.data || []
-      setReservationOrders(orders)
-    } catch (error) {
-      console.error('Error cargando órdenes:', error)
-      setReservationOrders([])
-    }
-  }
-
-  const openReservationModal = () => {
-    setReservationType('select')
-    setShowReservationModal(true)
-  }
-
-  // Crear nueva orden
-  const handleCreateOrder = () => {
-    setSelectedOrder(null)
-    setOrderItems([])
-    setOrderModalMode('create')
-    setShowOrderModal(true)
-  }
-
-  // Editar orden existente
-  const handleEditOrder = (order) => {
-    setSelectedOrder(order)
-    setOrderItems(order.items || [])
-    setOrderModalMode('edit')
-    setShowOrderModal(true)
-  }
-
-  // Guardar orden
-  const handleSaveOrder = async () => {
-    if (!selectedReservation) {
-      alert('❌ Selecciona una reserva primero')
-      return
-    }
-
-    if (orderItems.length === 0) {
-      alert('❌ Agrega al menos un producto a la orden')
-      return
-    }
-
-    try {
-      const payload = {
-        reservation_id: selectedReservation.reservation_id,
-        items: orderItems
-      }
-
-      if (orderModalMode === 'create') {
-        await api.post('/orders', payload)
-      } else {
-        await api.put(`/orders/${selectedOrder.order_id}`, payload)
-      }
-
-      // Recargar órdenes
-      const response = await api.get(`/orders?reservation_id=${selectedReservation.reservation_id}`)
-      const orders = response.data?.data || response.data || []
-      setReservationOrders(orders)
-
-      setShowOrderModal(false)
-      setOrderItems([])
-      setSelectedOrder(null)
-    } catch (error) {
-      alert(`❌ Error ${orderModalMode === 'create' ? 'creando' : 'actualizando'} orden: ${error.response?.data?.message || error.message}`)
-    }
-  }
-
-  // Crear nueva reserva
-  const handleCreateReservation = async (form) => {
-    try {
-      const payload = {
-        table_id: form.table_id,
-        date: form.date,
-        startTime: normalizeTimeTo24h(form.startTime),
-        endTime: normalizeTimeTo24h(form.endTime),
-        peopleCount: Number(form.peopleCount),
-        channel: String(form.channel || 'presencial').toLowerCase(),
-        ...(form.clientType === 'registered'
-          ? {
-              clientRef: {
-                fullname: form.clientRef.fullname,
-                docID: form.clientRef.docID
-              }
-            }
-          : {
-              guest: {
-                fullname: form.guest.fullname,
-                ...(form.guest.phone && { phone: form.guest.phone })
-              }
-            })
-      }
-
-      const res = await api.post('/reservations', payload)
-
-      setSelectedReservation(res.data)
-      setReservationOrders([])
-      setShowReservationModal(false)
-
-      const resResult = await api.get('/reservations')
-      const d = resResult.data?.data || resResult.data
-      setReservations(Array.isArray(d) && d.length > 0 ? d : [])
-    } catch (err) {
-      alert(`❌ Error creando reserva: ${getApiErrorMessage(err, 'Error creando reserva')}`)
-    }
-  }
-
-  // Filtrar reservas activas
-  const activeReservations = reservations.filter(r =>
-    ['confirmada', 'en_curso'].includes(r.status) &&
-    r.reservation_id.toLowerCase().includes(reservationSearch.toLowerCase())
-  )
-
-  // Obtener nombre de la reserva
-  const getReservationLabel = () => {
-    if (!selectedReservation) return 'Seleccionar reserva'
-    const name = selectedReservation.guest?.fullname || selectedReservation.clientRef?.fullname || 'Sin nombre'
-    return `${selectedReservation.reservation_id} - ${name}`
   }
 
   return (
-    <div className="page-wrapper">
-      {/* Contenido principal */}
-      <div className="page-content">
-        {/* Topbar */}
-        <div className="topbar">
-          <div className="search-bar">
-            <Search size={16} />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Buscar producto..."
-            />
-          </div>
+    <Modal title="Crear orden" onClose={onClose} maxWidth={980}>
+      <ErrorBox message={error} />
 
-          <div className="topbar-right">
-            <button className="notif-btn">
-              <Bell size={18} />
-            </button>
-            <div className="user-chip">
-              <div style={{
-                width: 32, height: 32, borderRadius: '50%',
-                background: '#E8E6E1',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 13, fontWeight: 600, color: '#666'
-              }}>JP</div>
-              <div className="user-chip-info">
-                <div className="user-chip-name">Juan Pérez</div>
-                <div className="user-chip-role">Mesero</div>
-              </div>
-              <ChevronDown size={14} color="var(--text-secondary)" />
-            </div>
-          </div>
+      <div style={{
+        background: 'var(--bg-main)', border: '1.5px solid var(--border)',
+        borderRadius: 10, padding: 12, marginBottom: 16,
+        display: 'flex', justifyContent: 'space-between', gap: 12
+      }}>
+        <div>
+          <div style={{ fontWeight: 700 }}>{customerName(reservation)}</div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{reservation.reservation_id}</div>
         </div>
+        <div style={{ fontWeight: 700 }}>{tableLabel(reservation.table_id, tables)}</div>
+      </div>
 
-        {/* Categorías */}
-        <CategoryFilter active={category} onChange={setCategory} />
+      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 18 }}>
+        <div>
+          <div className="search-bar" style={{ marginBottom: 12 }}>
+            <Search size={15} />
+            <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar productos..." />
+          </div>
 
-        {/* Grid de productos */}
-        {loading ? (
-          <div style={{ color: 'var(--text-secondary)', fontSize: 14, padding: '40px 0', textAlign: 'center' }}>
-            Cargando productos...
-          </div>
-        ) : filtered.length === 0 ? (
-          <div style={{ color: 'var(--text-secondary)', fontSize: 14, padding: '40px 0', textAlign: 'center' }}>
-            No se encontraron productos
-          </div>
-        ) : (
-          <div className="product-grid">
-            {filtered.map(product => (
-              <ProductCard
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+            gap: 18,
+            maxHeight: 520,
+            overflowY: 'auto',
+            paddingRight: 4
+          }}>
+            {filteredProducts.map((product, i) => (
+              <OrderProductCard
                 key={product.product_id}
                 product={product}
-                onAdd={handleAddProduct}
+                index={i}
+                onAdd={addProduct}
               />
             ))}
           </div>
-        )}
+        </div>
 
-        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 20 }}>
-          ⓘ Los precios incluyen impuestos.
+        <div style={{
+          border: '1.5px solid var(--border)', borderRadius: 12,
+          overflow: 'hidden', alignSelf: 'start'
+        }}>
+          <div style={{ padding: '13px 16px', background: 'var(--bg-main)', borderBottom: '1.5px solid var(--border)', fontWeight: 700 }}>
+            Carrito
+          </div>
+
+          <div style={{ padding: 14, maxHeight: 310, overflowY: 'auto' }}>
+            {cart.length === 0 ? (
+              <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: 28 }}>
+                Agrega productos
+              </div>
+            ) : cart.map(item => (
+              <div key={item.product_id} style={{
+                display: 'grid', gridTemplateColumns: '1fr auto', gap: 10,
+                padding: '10px 0', borderBottom: '1px solid var(--border-light)'
+              }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>{item.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{fmt(item.unitPrice)}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+                    <button onClick={() => updateQty(item.product_id, item.quantity - 1)} style={smallIconButton}><Minus size={12} /></button>
+                    <span style={{ minWidth: 18, textAlign: 'center', fontWeight: 700 }}>{item.quantity}</span>
+                    <button onClick={() => updateQty(item.product_id, item.quantity + 1)} style={smallIconButton}><Plus size={12} /></button>
+                  </div>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>{fmt(item.quantity * item.unitPrice)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ padding: 14, borderTop: '1.5px solid var(--border)' }}>
+            <Field label="Nota opcional" icon={FileText}>
+              <textarea
+                style={{ ...inputStyle, minHeight: 70, resize: 'vertical' }}
+                value={note}
+                onChange={e => setNote(e.target.value)}
+              />
+            </Field>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, marginBottom: 12 }}>
+              <span>Total</span>
+              <span>{fmt(total)}</span>
+            </div>
+            <button className="btn-primary" onClick={submit} disabled={saving || cart.length === 0} style={{ width: '100%', opacity: saving || cart.length === 0 ? 0.65 : 1 }}>
+              {saving ? 'Generando...' : 'Generar orden'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+const smallIconButton = {
+  width: 26, height: 26, borderRadius: 6,
+  border: '1.5px solid var(--border)', background: 'var(--bg-panel)',
+}
+
+function ReservationPanel({
+  reservation,
+  tables,
+  orders,
+  paymentsByOrder,
+  onClose,
+  onOpenCreateOrder,
+  onSendKitchen,
+  onGeneratePayment
+}) {
+  if (!reservation) return null
+
+  return (
+    <section style={{
+      background: 'var(--bg-card)', border: '1.5px solid var(--border)', borderRadius: 14,
+      overflow: 'hidden', boxShadow: 'var(--shadow-card)', marginBottom: 24
+    }}>
+      <div style={{
+        padding: '16px 20px', background: 'var(--bg-main)',
+        borderBottom: '1.5px solid var(--border)',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16
+      }}>
+        <div>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, marginBottom: 4 }}>
+            Orden para {customerName(reservation)}
+          </div>
+          <div style={{ display: 'flex', gap: 12, color: 'var(--text-secondary)', fontSize: 13, flexWrap: 'wrap' }}>
+            <span>{reservation.reservation_id}</span>
+            <span>{tableLabel(reservation.table_id, tables)}</span>
+            <span>{reservation.peopleCount} personas</span>
+            <span>{reservation.date} {reservation.startTime}</span>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn-primary" style={{ width: 'auto', padding: '10px 16px' }} onClick={onOpenCreateOrder}>
+            <Plus size={16} /> Crear orden
+          </button>
+          <button className="btn-secondary" style={{ width: 'auto', padding: '10px 14px' }} onClick={onClose}>
+            Cerrar panel
+          </button>
         </div>
       </div>
 
-      {/* Panel de orden */}
-      <OrderPanel
-        items={orderItems}
-        reservation={selectedReservation}
-        reservationOrders={reservationOrders}
-        tables={tables}
-        onQtyChange={handleQtyChange}
-        onRemove={handleRemove}
-        onSend={handleSend}
-        onPay={handlePay}
-        onReservationClick={openReservationModal}
-        onCreateOrder={handleCreateOrder}
-        onEditOrder={handleEditOrder}
-        onSaveOrder={handleSaveOrder}
-      />
+      <div style={{ padding: 18 }}>
+        {orders.length === 0 ? (
+          <div style={{ padding: 34, textAlign: 'center', color: 'var(--text-secondary)' }}>
+            Aún no se han creado ordenes
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
+            {orders.map(order => {
+              const orderPayments = paymentsByOrder[order.order_id] || []
+              const hasPayment = orderPayments.length > 0
+              const kitchenDisabled = order.status !== 'abierto'
 
-      {/* Modal de reserva */}
-      {showReservationModal && (
-        <ReservationModal
-          reservations={activeReservations}
-          tables={tables}
-          clients={clients}
-          onSelect={handleSelectReservation}
-          onCreate={handleCreateReservation}
-          onClose={() => setShowReservationModal(false)}
-          search={reservationSearch}
-          onSearchChange={setReservationSearch}
-          type={reservationType}
-          onTypeChange={setReservationType}
-        />
-      )}
+              return (
+                <div key={order.order_id} style={{
+                  border: '1.5px solid var(--border)', borderRadius: 12,
+                  overflow: 'hidden', background: 'var(--bg-card)'
+                }}>
+                  <div style={{
+                    padding: '12px 14px', background: 'var(--bg-main)',
+                    borderBottom: '1px solid var(--border-light)',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10
+                  }}>
+                    <div>
+                      <div style={{ fontWeight: 700 }}>{order.order_id}</div>
+                      <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{fmtDate(order.createdAt)}</div>
+                    </div>
+                    <StatusBadge status={order.status} />
+                  </div>
 
-      {/* Modal de orden */}
-      {showOrderModal && (
-        <Modal title={`${orderModalMode === 'create' ? 'Crear' : 'Editar'} orden`} onClose={() => setShowOrderModal(false)} maxWidth={800}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            {/* Catálogo de productos */}
-            <div>
-              <h3 style={{ marginBottom: 12, fontSize: 16, fontWeight: 600 }}>Seleccionar productos</h3>
-
-              {/* Filtros */}
-              <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-                <div style={{ flex: 1, minWidth: 200 }}>
-                  <input
-                    type="text"
-                    placeholder="Buscar productos..."
-                    value={search}
-                    onChange={e => setSearch(e.target.value)}
-                    style={inputStyle}
-                  />
-                </div>
-                <select
-                  value={category}
-                  onChange={e => setCategory(e.target.value)}
-                  style={{ ...inputStyle, width: 'auto', minWidth: 150 }}
-                >
-                  <option value="todos">Todas las categorías</option>
-                  <option value="coctel">Cócteles</option>
-                  <option value="cerveza">Cervezas</option>
-                  <option value="licor">Licores</option>
-                  <option value="vino">Vinos</option>
-                  <option value="snack">Snacks</option>
-                  <option value="entradas">Entradas</option>
-                  <option value="platos_fuertes">Platos fuertes</option>
-                  <option value="especialidades">Especialidades</option>
-                  <option value="otro">Otros</option>
-                </select>
-              </div>
-
-              {/* Grid de productos */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, maxHeight: 300, overflowY: 'auto' }}>
-                {filtered.map(product => (
-                  <ProductCard
-                    key={product.product_id}
-                    product={product}
-                    onAdd={handleAddProduct}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Orden actual */}
-            {orderItems.length > 0 && (
-              <div>
-                <h3 style={{ marginBottom: 12, fontSize: 16, fontWeight: 600 }}>Orden actual</h3>
-                <div style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: 16 }}>
-                  {orderItems.map((item, idx) => (
-                    <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: idx < orderItems.length - 1 ? '1px solid #F3F4F6' : 'none' }}>
-                      <div style={{ flex: 1 }}>
-                        <span style={{ fontWeight: 500 }}>{item.name}</span>
+                  <div style={{ padding: 14 }}>
+                    {(order.items || []).map(item => (
+                      <div key={`${order.order_id}-${item.product_id}`} style={{
+                        display: 'flex', justifyContent: 'space-between',
+                        padding: '5px 0', fontSize: 13
+                      }}>
+                        <span>{item.quantity} x {item.name}</span>
+                        <strong>{fmt(item.quantity * item.unitPrice)}</strong>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <button
-                            onClick={() => handleQtyChange(idx, item.quantity - 1)}
-                            style={{ padding: '4px 8px', border: '1px solid #D1D5DB', background: 'white', borderRadius: 4, cursor: 'pointer' }}
-                          >
-                            -
-                          </button>
-                          <span style={{ minWidth: 30, textAlign: 'center' }}>{item.quantity}</span>
-                          <button
-                            onClick={() => handleQtyChange(idx, item.quantity + 1)}
-                            style={{ padding: '4px 8px', border: '1px solid #D1D5DB', background: 'white', borderRadius: 4, cursor: 'pointer' }}
-                          >
-                            +
-                          </button>
-                        </div>
-                        <span style={{ fontWeight: 500, minWidth: 80, textAlign: 'right' }}>
-                          {fmt(item.quantity * item.unitPrice)}
-                        </span>
-                        <button
-                          onClick={() => handleRemove(idx)}
-                          style={{ padding: '4px', border: 'none', background: 'transparent', color: '#EF4444', cursor: 'pointer' }}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    ))}
 
-                  {/* Totales */}
-                  <div style={{ borderTop: '1px solid #E2E8F0', marginTop: 16, paddingTop: 16 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: '#6B7280' }}>
-                      <span>Subtotal</span>
-                      <span>{fmt(orderItems.reduce((s, i) => s + i.quantity * i.unitPrice, 0))}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: '#6B7280' }}>
-                      <span>Impuestos (8%)</span>
-                      <span>{fmt(Math.round(orderItems.reduce((s, i) => s + i.quantity * i.unitPrice, 0) * 0.08))}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: 16, marginTop: 8 }}>
+                    {order.notes && (
+                      <div style={{
+                        marginTop: 10, padding: 10, borderRadius: 8,
+                        background: 'var(--bg-main)', color: 'var(--text-secondary)', fontSize: 12
+                      }}>
+                        {order.notes}
+                      </div>
+                    )}
+
+                    <div style={{
+                      borderTop: '1px solid var(--border-light)', marginTop: 12,
+                      paddingTop: 12, display: 'flex', justifyContent: 'space-between',
+                      fontWeight: 700
+                    }}>
                       <span>Total</span>
-                      <span>{fmt(Math.round(orderItems.reduce((s, i) => s + i.quantity * i.unitPrice, 0) * 1.08))}</span>
+                      <span>{fmt(order.totalAmount)}</span>
+                    </div>
+
+                    {hasPayment && (
+                      <div style={{ marginTop: 8, fontSize: 12, color: '#065F46', display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <CheckCircle2 size={13} />
+                        Pago generado: {orderPayments[0].payment_id}
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+                      <button
+                        onClick={() => onSendKitchen(order)}
+                        disabled={kitchenDisabled}
+                        style={{
+                          flex: 1, border: 'none', borderRadius: 8,
+                          background: kitchenDisabled ? '#E5E7EB' : '#F59E0B',
+                          color: kitchenDisabled ? '#6B7280' : '#fff',
+                          padding: '10px 12px', fontWeight: 700,
+                          cursor: kitchenDisabled ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        <ChefHat size={15} /> Enviar a cocina
+                      </button>
+                      <button
+                        onClick={() => onGeneratePayment(order)}
+                        disabled={hasPayment || order.status === 'cancelado'}
+                        style={{
+                          flex: 1, border: 'none', borderRadius: 8,
+                          background: hasPayment || order.status === 'cancelado' ? '#E5E7EB' : '#065F46',
+                          color: hasPayment || order.status === 'cancelado' ? '#6B7280' : '#fff',
+                          padding: '10px 12px', fontWeight: 700,
+                          cursor: hasPayment || order.status === 'cancelado' ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        <CreditCard size={15} /> Generar pago
+                      </button>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
 
-            {/* Acciones */}
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setShowOrderModal(false)}
-                style={{ padding: '10px 20px', border: '1px solid #D1D5DB', background: 'white', borderRadius: 6, cursor: 'pointer' }}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleSaveOrder}
-                disabled={orderItems.length === 0}
-                style={{
-                  padding: '10px 20px',
-                  border: 'none',
-                  background: orderItems.length === 0 ? '#D1D5DB' : '#2563EB',
-                  color: 'white',
-                  borderRadius: 6,
-                  cursor: orderItems.length === 0 ? 'not-allowed' : 'pointer'
-                }}
-              >
-                {orderModalMode === 'create' ? 'Crear orden' : 'Actualizar orden'}
-              </button>
+function FilterPill({ label, active, activeColor, activeBg, onClick }) {
+  return (
+    <button onClick={onClick} style={{
+      padding: '8px 14px', borderRadius: 8, cursor: 'pointer',
+      fontFamily: 'var(--font-body)', fontSize: 13,
+      fontWeight: active ? 600 : 400, transition: 'all 0.12s',
+      border: active ? `1.5px solid ${activeColor}` : '1.5px solid var(--border)',
+      background: active ? activeBg : 'var(--bg-panel)',
+      color: active ? activeColor : 'var(--text-secondary)',
+    }}>
+      {label}
+    </button>
+  )
+}
+
+function ActionBtn({ icon: Icon, onClick, title, hoverColor }) {
+  const [h, setH] = useState(false)
+  return (
+    <button title={title} onClick={onClick}
+      onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
+      style={{
+        width: 30, height: 30, borderRadius: 7, cursor: 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        border: `1.5px solid ${h ? hoverColor : 'var(--border)'}`,
+        background: h ? hoverColor + '15' : 'transparent',
+        color: h ? hoverColor : 'var(--text-secondary)',
+        transition: 'all 0.12s'
+      }}>
+      <Icon size={13} />
+    </button>
+  )
+}
+
+function SortHeader({ label, field, sort, onSort }) {
+  const active = sort.field === field
+  return (
+    <div
+      onClick={() => onSort(field)}
+      style={{
+        fontSize: 11, fontWeight: 700, color: active ? 'var(--accent)' : 'var(--text-secondary)',
+        textTransform: 'uppercase', letterSpacing: '0.5px',
+        display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer',
+        userSelect: 'none', transition: 'color 0.12s'
+      }}>
+      {label}
+      {active
+        ? (sort.dir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />)
+        : <ChevronDown size={11} style={{ opacity: 0.3 }} />}
+    </div>
+  )
+}
+
+function OrderRow({ order, onView, onEdit, onDelete, index }) {
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: '1.5fr 1.5fr 2fr 1fr 1.2fr 120px',
+      alignItems: 'center', gap: 12,
+      padding: '13px 20px', background: 'var(--bg-card)',
+      borderBottom: '1.5px solid var(--border-light)',
+      animation: `fadeIn 0.2s ease ${index * 0.03}s both`,
+      transition: 'background 0.1s'
+    }}
+      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-panel)'}
+      onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-card)'}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+        <ShoppingBag size={11} color="var(--text-secondary)" style={{ flexShrink: 0 }} />
+        <span style={{ fontSize: 13, fontFamily: 'monospace', letterSpacing: '0.5px', fontWeight: 600 }}>
+          {order.order_id}
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+        <Hash size={11} color="var(--text-secondary)" style={{ flexShrink: 0 }} />
+        <span style={{ fontSize: 13 }}>{order.reservation_id}</span>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+        <User size={11} color="var(--text-secondary)" style={{ flexShrink: 0 }} />
+        <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {order.clientHint || 'Sin referencia'}
+        </span>
+      </div>
+
+      <StatusBadge status={order.status} />
+
+      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
+        {fmt(order.totalAmount)}
+      </div>
+
+      <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end' }}>
+        <ActionBtn icon={Eye} onClick={() => onView(order)} title="Ver detalle" hoverColor="#3B82F6" />
+        <ActionBtn icon={Edit2} onClick={() => onEdit(order)} title="Editar" hoverColor="#F59E0B" />
+        <ActionBtn icon={Trash2} onClick={() => onDelete(order)} title="Eliminar" hoverColor="#EF4444" />
+      </div>
+    </div>
+  )
+}
+
+export default function Orders() {
+  const [orders, setOrders] = useState([])
+  const [reservations, setReservations] = useState([])
+  const [tables, setTables] = useState([])
+  const [clients, setClients] = useState([])
+  const [products, setProducts] = useState([])
+  const [payments, setPayments] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [actionLoading, setActionLoading] = useState(false)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('todos')
+  const [sort, setSort] = useState({ field: 'createdAt', dir: 'desc' })
+  const [showForm, setShowForm] = useState(false)
+  const [editTarget, setEditTarget] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [viewTarget, setViewTarget] = useState(null)
+  const [showStartModal, setShowStartModal] = useState(false)
+  const [showReservationForm, setShowReservationForm] = useState(false)
+  const [showChooseReservation, setShowChooseReservation] = useState(false)
+  const [showCreateOrder, setShowCreateOrder] = useState(false)
+  const [selectedReservationId, setSelectedReservationId] = useState('')
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 10
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const [ordersResult, reservationsResult, tablesResult, clientsResult, productsResult, paymentsResult] = await Promise.allSettled([
+      api.get('/orders?limit=100'),
+      api.get('/reservations?limit=100'),
+      api.get('/tables?showInactive=true'),
+      api.get('/clients?limit=100'),
+      api.get('/products?showInactive=true&limit=100'),
+      api.get('/payments?limit=100')
+    ])
+
+    setOrders(ordersResult.status === 'fulfilled' ? parseCollection(ordersResult.value) : [])
+    setReservations(reservationsResult.status === 'fulfilled' ? parseCollection(reservationsResult.value) : [])
+    setTables(tablesResult.status === 'fulfilled' ? parseCollection(tablesResult.value) : [])
+    setClients(clientsResult.status === 'fulfilled' ? parseCollection(clientsResult.value) : [])
+    setProducts(productsResult.status === 'fulfilled' ? parseCollection(productsResult.value) : [])
+    setPayments(paymentsResult.status === 'fulfilled' ? parseCollection(paymentsResult.value) : [])
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const paymentsByOrder = useMemo(() => payments.reduce((acc, payment) => {
+    if (!payment.order_id) return acc
+    if (!acc[payment.order_id]) acc[payment.order_id] = []
+    acc[payment.order_id].push(payment)
+    return acc
+  }, {}), [payments])
+
+  const ordersByReservation = useMemo(() => orders.reduce((acc, order) => {
+    if (!order.reservation_id) return acc
+    if (!acc[order.reservation_id]) acc[order.reservation_id] = []
+    acc[order.reservation_id].push(order)
+    return acc
+  }, {}), [orders])
+
+  const selectedReservation = reservations.find(r => r.reservation_id === selectedReservationId)
+  const selectedReservationOrders = selectedReservation ? (ordersByReservation[selectedReservation.reservation_id] || []) : []
+
+  const filtered = orders
+    .filter(o => {
+      const q = search.toLowerCase()
+      const matchSearch =
+        o.order_id?.toLowerCase().includes(q) ||
+        o.reservation_id?.toLowerCase().includes(q) ||
+        (o.clientHint || '').toLowerCase().includes(q)
+      const matchStatus =
+        statusFilter === 'todos' ||
+        (statusFilter === 'en_proceso' && PROCESS_STATUSES.includes(o.status)) ||
+        o.status === statusFilter
+      return matchSearch && matchStatus
+    })
+    .sort((a, b) => {
+      let va = a[sort.field] || '', vb = b[sort.field] || ''
+      if (typeof va === 'string') va = va.toLowerCase()
+      if (typeof vb === 'string') vb = vb.toLowerCase()
+      return sort.dir === 'asc' ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1)
+    })
+
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
+  const handleSort = (field) => {
+    setSort(s => s.field === field ? { field, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { field, dir: 'asc' })
+    setPage(1)
+  }
+
+  const stats = {
+    total: orders.length,
+    abiertos: orders.filter(o => o.status === 'abierto').length,
+    enProceso: orders.filter(o => PROCESS_STATUSES.includes(o.status)).length,
+    completados: orders.filter(o => o.status === 'servido').length,
+    cancelados: orders.filter(o => o.status === 'cancelado').length,
+  }
+
+  const handleEdit = async (form) => {
+    const payload = {
+      clientHint: form.clientHint?.trim(),
+      status: form.status,
+      notes: form.notes?.trim()
+    }
+    await api.patch(`/orders/${form.order_id}`, payload)
+    await load()
+  }
+
+  const handleDelete = async () => {
+    await api.delete(`/orders/${deleteTarget.order_id}`)
+    await load()
+    setDeleteTarget(null)
+  }
+
+  const buildReservationPayload = (form) => {
+    const payload = {
+      table_id: form.table_id,
+      date: form.date,
+      startTime: form.startTime,
+      endTime: form.endTime,
+      peopleCount: Number(form.peopleCount),
+      channel: form.channel,
+      ...(form.notes?.trim() && { notes: form.notes.trim() }),
+      ...(form.appliedCoupons && form.appliedCoupons.length > 0 && { appliedCoupons: form.appliedCoupons })
+    }
+
+    if (form.clientType === 'registered') {
+      payload.clientRef = {
+        fullname: form.clientRef.fullname,
+        docID: form.clientRef.docID
+      }
+    } else {
+      payload.guest = {
+        fullname: form.guest.fullname,
+        ...(form.guest.phone && { phone: form.guest.phone }),
+        ...(form.guest.notes && { notes: form.guest.notes })
+      }
+    }
+
+    return payload
+  }
+
+  const handleCreateReservation = async (form) => {
+    const created = await api.post('/reservations', buildReservationPayload(form))
+    const reservation = created.data
+
+    let readyReservation = reservation
+    if (reservation.status === 'pendiente') {
+      const updated = await api.patch(`/reservations/${reservation.reservation_id}`, { status: 'confirmada' })
+      readyReservation = updated.data
+    }
+
+    setSelectedReservationId(readyReservation.reservation_id)
+    await load()
+  }
+
+  const handleSelectReservation = (reservation) => {
+    setSelectedReservationId(reservation.reservation_id)
+    setShowChooseReservation(false)
+  }
+
+  const handleCreateOrder = async (payload) => {
+    await api.post('/orders', payload)
+    await load()
+  }
+
+  const handleSendKitchen = async (order) => {
+    setActionLoading(true)
+    try {
+      await api.patch(`/orders/${order.order_id}/status`, { status: 'enviado_cocina' })
+      await load()
+    } catch (err) {
+      alert(getApiErrorMessage(err, 'Error enviando orden a cocina'))
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleGeneratePayment = async (order) => {
+    setActionLoading(true)
+    try {
+      await api.post('/payments', {
+        reservation_id: order.reservation_id,
+        order_id: order.order_id,
+        scope: 'order',
+        amount: Number(order.totalAmount || 0),
+        method: 'efectivo',
+        status: 'pendiente'
+      })
+      await load()
+    } catch (err) {
+      alert(getApiErrorMessage(err, 'Error generando pago'))
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg-main)', padding: 28 }}>
+      <style>{`
+        @keyframes fadeIn  { from { opacity:0; transform:translateY(5px) } to { opacity:1; transform:none } }
+        @keyframes modalIn { from { opacity:0; transform:scale(0.97) }     to { opacity:1; transform:none } }
+        button:disabled { pointer-events: auto; }
+      `}</style>
+
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 36, letterSpacing: 0.5, marginBottom: 4 }}>
+            Ordenes
+          </h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>
+            Gestiona pedidos, cocina y pagos por reserva
+          </p>
+        </div>
+        <button
+          className="btn-primary"
+          style={{ width: 'auto', padding: '11px 20px' }}
+          onClick={() => setShowStartModal(true)}
+        >
+          <Plus size={16} /> Crear orden
+        </button>
+      </div>
+
+      <ReservationPanel
+        reservation={selectedReservation}
+        tables={tables}
+        orders={selectedReservationOrders}
+        paymentsByOrder={paymentsByOrder}
+        onClose={() => setSelectedReservationId('')}
+        onOpenCreateOrder={() => setShowCreateOrder(true)}
+        onSendKitchen={handleSendKitchen}
+        onGeneratePayment={handleGeneratePayment}
+      />
+
+      {actionLoading && (
+        <div style={{ marginBottom: 16, color: 'var(--text-secondary)', fontSize: 13 }}>
+          Procesando accion...
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 14, marginBottom: 24 }}>
+        {[
+          { label: 'Total', val: stats.total, color: 'var(--text-primary)', bg: '#fff', border: 'var(--border)' },
+          { label: 'Abiertos', val: stats.abiertos, color: '#1D4ED8', bg: '#DBEAFE', border: '#BFDBFE' },
+          { label: 'En proceso', val: stats.enProceso, color: '#F59E0B', bg: '#FEF3C7', border: '#FDE68A' },
+          { label: 'Completados', val: stats.completados, color: '#065F46', bg: '#D1FAE5', border: '#A7F3D0' },
+          { label: 'Cancelados', val: stats.cancelados, color: '#B91C1C', bg: '#FEE2E2', border: '#FECACA' },
+        ].map(({ label, val, color, bg, border }) => (
+          <div key={label} style={{
+            background: bg, border: `1.5px solid ${border}`,
+            borderRadius: 12, padding: '16px 20px',
+            animation: 'fadeIn 0.25s ease both'
+          }}>
+            <div style={{ fontSize: 30, fontFamily: 'var(--font-display)', color, lineHeight: 1, marginBottom: 4 }}>
+              {val}
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="search-bar" style={{ flex: 1, minWidth: 240 }}>
+          <Search size={15} />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar por ID de orden, reserva o cliente..."
+          />
+          {search && (
+            <button onClick={() => setSearch('')} style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: 'var(--text-secondary)', display: 'flex'
+            }}>
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <FilterPill label="Todos" active={statusFilter === 'todos'} activeColor="#111" activeBg="#F3F4F6" onClick={() => setStatusFilter('todos')} />
+          <FilterPill label="Abiertos" active={statusFilter === 'abierto'} activeColor="#1D4ED8" activeBg="#DBEAFE" onClick={() => setStatusFilter('abierto')} />
+          <FilterPill label="En proceso" active={statusFilter === 'en_proceso'} activeColor="#F59E0B" activeBg="#FEF3C7" onClick={() => setStatusFilter('en_proceso')} />
+          <FilterPill label="Completados" active={statusFilter === 'servido'} activeColor="#065F46" activeBg="#D1FAE5" onClick={() => setStatusFilter('servido')} />
+          <FilterPill label="Cancelados" active={statusFilter === 'cancelado'} activeColor="#B91C1C" activeBg="#FEE2E2" onClick={() => setStatusFilter('cancelado')} />
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 64, color: 'var(--text-secondary)', fontSize: 14 }}>
+          Cargando ordenes...
+        </div>
+      ) : paginated.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: 64, color: 'var(--text-secondary)', fontSize: 14 }}>
+          <ShoppingBag size={48} style={{ opacity: 0.2, marginBottom: 12 }} />
+          <div>Aún no se han creado ordenes</div>
+        </div>
+      ) : (
+        <>
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 14 }}>
+            {filtered.length} orden{filtered.length !== 1 ? 'es' : ''} encontrada{filtered.length !== 1 ? 's' : ''}
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1.5fr 1.5fr 2fr 1fr 1.2fr 120px',
+            gap: 12, padding: '12px 20px',
+            background: 'var(--bg-main)', borderRadius: '12px 12px 0 0',
+            border: '1.5px solid var(--border)', borderBottom: 'none'
+          }}>
+            <SortHeader label="Orden" field="order_id" sort={sort} onSort={handleSort} />
+            <SortHeader label="Reserva" field="reservation_id" sort={sort} onSort={handleSort} />
+            <SortHeader label="Cliente" field="clientHint" sort={sort} onSort={handleSort} />
+            <SortHeader label="Estado" field="status" sort={sort} onSort={handleSort} />
+            <SortHeader label="Total" field="totalAmount" sort={sort} onSort={handleSort} />
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Acciones
             </div>
           </div>
-        </Modal>
+
+          <div style={{
+            border: '1.5px solid var(--border)',
+            borderTop: 'none', borderRadius: '0 0 12px 12px',
+            overflow: 'hidden'
+          }}>
+            {paginated.map((order, i) => (
+              <OrderRow
+                key={order.order_id}
+                order={order}
+                index={i}
+                onView={o => setViewTarget(o)}
+                onEdit={o => { setEditTarget(o); setShowForm(true) }}
+                onDelete={o => setDeleteTarget(o)}
+              />
+            ))}
+          </div>
+
+          {totalPages > 1 && (
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 20 }}>
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                style={{
+                  padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6,
+                  background: page === 1 ? '#F3F4F6' : '#fff', cursor: page === 1 ? 'not-allowed' : 'pointer'
+                }}>
+                Anterior
+              </button>
+              <span style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>
+                Pagina {page} de {totalPages}
+              </span>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                style={{
+                  padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6,
+                  background: page === totalPages ? '#F3F4F6' : '#fff', cursor: page === totalPages ? 'not-allowed' : 'pointer'
+                }}>
+                Siguiente
+              </button>
+            </div>
+          )}
+        </>
+      )}
+
+      {showStartModal && (
+        <StartOrderModal
+          onClose={() => setShowStartModal(false)}
+          onCreateReservation={() => { setShowStartModal(false); setShowReservationForm(true) }}
+          onChooseReservation={() => { setShowStartModal(false); setShowChooseReservation(true) }}
+        />
+      )}
+
+      {showReservationForm && (
+        <ReservationFormModal
+          tables={tables}
+          clients={clients}
+          onClose={() => setShowReservationForm(false)}
+          onSave={handleCreateReservation}
+        />
+      )}
+
+      {showChooseReservation && (
+        <ChooseReservationModal
+          reservations={reservations}
+          tables={tables}
+          onClose={() => setShowChooseReservation(false)}
+          onSelect={handleSelectReservation}
+        />
+      )}
+
+      {showCreateOrder && selectedReservation && (
+        <CreateOrderModal
+          reservation={selectedReservation}
+          tables={tables}
+          products={products}
+          onClose={() => setShowCreateOrder(false)}
+          onCreate={handleCreateOrder}
+        />
+      )}
+
+      {showForm && (
+        <OrderFormModal
+          initial={editTarget}
+          onClose={() => { setShowForm(false); setEditTarget(null) }}
+          onSave={handleEdit}
+        />
+      )}
+
+      {deleteTarget && (
+        <ConfirmDeleteModal
+          order={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={handleDelete}
+        />
+      )}
+
+      {viewTarget && (
+        <OrderDetailModal
+          order={viewTarget}
+          onClose={() => setViewTarget(null)}
+        />
       )}
     </div>
   )

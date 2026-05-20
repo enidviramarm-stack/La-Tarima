@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Search, Plus, X, Edit2, Trash2,
   CalendarDays, Clock, Users, MapPin,
@@ -29,7 +29,8 @@ const ORDER_STATUS = {
 const EMPTY_FORM = {
   table_id: '', date: '', startTime: '', endTime: '',
   peopleCount: 1, channel: 'presencial', notes: '', status: 'pendiente',
-  guest: { fullname: '', phone: '', notes: '' }
+  guest: { fullname: '', phone: '', notes: '' },
+  appliedCoupons: []
 }
 
 // ─── SAMPLE DATA ──────────────────────────────────────────────
@@ -192,10 +193,10 @@ function Modal({ title, onClose, children, maxWidth = 560 }) {
       padding: 24, backdropFilter: 'blur(2px)'
     }} onClick={onClose}>
       <div style={{
-        background: '#fff', borderRadius: 16,
+        background: 'var(--bg-card)', borderRadius: 16,
         width: '100%', maxWidth,
         maxHeight: '90vh', overflowY: 'auto',
-        boxShadow: '0 24px 64px rgba(0,0,0,0.18)',
+        boxShadow: '0 24px 64px rgba(0, 0, 0, 0.18)',
         animation: 'modalIn 0.18s ease'
       }} onClick={e => e.stopPropagation()}>
         <div style={{
@@ -239,18 +240,30 @@ const inputStyle = {
   width: '100%', padding: '10px 12px',
   border: '1.5px solid var(--border)', borderRadius: 8,
   fontSize: 14, fontFamily: 'var(--font-body)',
-  outline: 'none', background: '#fff',
+  outline: 'none', background: 'var(--bg-panel)',
   color: 'var(--text-primary)', transition: 'border-color 0.15s',
   boxSizing: 'border-box'
 }
 
 // ─── DETAIL MODAL ─────────────────────────────────────────────
-function DetailModal({ res, tables, onClose }) {
-  const paid = (res.orders || []).reduce((s, o) =>
+function DetailModal({ res, tables, orders = [], onClose }) {
+  const paid = (orders || []).reduce((s, o) =>
     s + (o.payments || []).filter(p => p.status === 'aprobado')
       .reduce((ps, p) => ps + p.amount, 0), 0)
-  const total = (res.orders || []).reduce((s, o) => s + (o.totalAmount || 0), 0)
+  const total = (orders || []).reduce((s, o) => s + (o.totalAmount || 0), 0)
   const name  = res.guest?.fullname || res.clientRef?.fullname || '—'
+
+  // Calcular descuento total de cupones
+  const coupons = res.appliedCoupons || []
+  let totalDiscount = 0
+  coupons.forEach(coupon => {
+    if (coupon.type === 'percentage') {
+      totalDiscount += (total * coupon.value) / 100
+    } else {
+      totalDiscount += coupon.value
+    }
+  })
+  const discountedTotal = Math.max(0, total - totalDiscount)
 
   return (
     <Modal title={`Detalle — ${res.reservation_id}`} onClose={onClose}>
@@ -278,14 +291,50 @@ function DetailModal({ res, tables, onClose }) {
         ))}
       </div>
 
+      {/* Cupones aplicados */}
+      {coupons.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }}>
+            Cupones aplicados
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {coupons.map(coupon => (
+              <div key={coupon.discount_id} style={{
+                background: '#F0FDF4', border: '1.5px solid #86EFAC',
+                borderRadius: 10, padding: 12
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 10 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: '#166534', marginBottom: 4 }}>
+                      {coupon.name}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#4ADE80' }}>
+                      Código: <strong>{coupon.code}</strong> • Estado: {coupon.consumed ? 'Consumido' : 'Pendiente'}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#16A34A' }}>
+                      -{coupon.type === 'percentage' ? `${coupon.value}%` : fmt(coupon.value)}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#86EFAC' }}>
+                      {coupon.type === 'percentage' ? fmt((total * coupon.value) / 100) : 'Fijo'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }}>
         Órdenes asociadas
       </div>
 
-      {!res.orders?.length ? (
+      {!(orders || res.orders)?.length ? (
         <p style={{ fontSize: 13, color: 'var(--text-secondary)', padding: '12px 0' }}>Sin órdenes registradas</p>
       ) : (
-        res.orders.map(order => (
+        (orders || res.orders).map(order => (
           <div key={order.order_id} style={{
             border: '1.5px solid var(--border)', borderRadius: 10, marginBottom: 12, overflow: 'hidden'
           }}>
@@ -336,10 +385,12 @@ function DetailModal({ res, tables, onClose }) {
           borderRadius: 10, display: 'flex', justifyContent: 'space-between'
         }}>
           {[
+            { label: 'Subtotal',  val: fmt(total),                                    color: 'var(--text-secondary)' },
+            totalDiscount > 0 && { label: 'Descuento', val: `-${fmt(totalDiscount)}`, color: '#16A34A' },
+            { label: 'Total',     val: fmt(discountedTotal),                           color: 'var(--text-primary)' },
             { label: 'Pagado',    val: fmt(paid),                   color: '#065F46' },
-            { label: 'Pendiente', val: fmt(Math.max(0, total-paid)), color: total-paid > 0 ? '#B91C1C' : '#065F46' },
-            { label: 'Total',     val: fmt(total),                  color: 'var(--text-primary)' },
-          ].map(({ label, val, color }) => (
+            { label: 'Pendiente', val: fmt(Math.max(0, discountedTotal-paid)), color: discountedTotal-paid > 0 ? '#B91C1C' : '#065F46' },
+          ].filter(Boolean).map(({ label, val, color }) => (
             <div key={label} style={{ textAlign: 'center' }}>
               <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 2 }}>{label}</div>
               <div style={{ fontSize: 16, fontWeight: 700, color }}>{val}</div>
@@ -361,7 +412,8 @@ function ReservationFormModal({ initial, tables, clients, onClose, onSave }) {
         ...initial,
         clientType: initial.clientRef ? 'registered' : 'guest',
         clientRef: initial.clientRef ? { ...initial.clientRef } : { fullname: '', docID: '' },
-        guest: initial.guest ? { ...initial.guest } : { fullname: '', phone: '', notes: '' }
+        guest: initial.guest ? { ...initial.guest } : { fullname: '', phone: '', notes: '' },
+        appliedCoupons: initial.appliedCoupons || []
       }
     }
     return {
@@ -374,6 +426,9 @@ function ReservationFormModal({ initial, tables, clients, onClose, onSave }) {
   const [error, setError] = useState('')
   const [clientSearch, setClientSearch] = useState('')
   const [selectedClient, setSelectedClient] = useState(initial?.clientRef ? { ...initial.clientRef } : null)
+  const [couponCode, setCouponCode] = useState('')
+  const [couponLoading, setCouponLoading] = useState(false)
+  const [couponError, setCouponError] = useState('')
 
   const set      = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const setGuest = (k, v) => setForm(f => ({ ...f, guest: { ...f.guest, [k]: v } }))
@@ -399,6 +454,102 @@ function ReservationFormModal({ initial, tables, clients, onClose, onSave }) {
   const selectClient = (client) => {
     setSelectedClient(client)
     setForm(f => ({ ...f, clientRef: { fullname: client.fullname, docID: client.docID } }))
+  }
+
+  // ── COUPON LOGIC ──
+  const handleSearchCoupon = async () => {
+    if (!couponCode.trim()) {
+      setCouponError('Ingresa un código de cupón')
+      return
+    }
+
+    setCouponLoading(true)
+    setCouponError('')
+    try {
+      const res = await api.get(`/discounts?code=${couponCode.trim().toUpperCase()}`)
+      const coupons = res.data?.data || []
+
+      if (coupons.length === 0) {
+        setCouponError('Cupón no encontrado')
+        setCouponLoading(false)
+        return
+      }
+
+      const coupon = coupons[0]
+      const now = new Date()
+      const validFrom = new Date(coupon.validFrom)
+      const validUntil = new Date(coupon.validUntil)
+
+      // Validaciones
+      if (!coupon.active) {
+        setCouponError('Este cupón está inactivo')
+        setCouponLoading(false)
+        return
+      }
+
+      if (now < validFrom) {
+        setCouponError('Este cupón aún no está disponible')
+        setCouponLoading(false)
+        return
+      }
+
+      if (now > validUntil) {
+        setCouponError('Este cupón ha expirado')
+        setCouponLoading(false)
+        return
+      }
+
+      if (coupon.maxUses && coupon.usedCount >= coupon.maxUses) {
+        setCouponError('Este cupón ha alcanzado el límite de usos')
+        setCouponLoading(false)
+        return
+      }
+
+      // Verificar si ya está aplicado
+      if (form.appliedCoupons?.some(c => c.discount_id === coupon.discount_id)) {
+        setCouponError('Este cupón ya está aplicado')
+        setCouponLoading(false)
+        return
+      }
+
+      // Agregar el cupón
+      const appliedCoupon = {
+        discount_id: coupon.discount_id,
+        code: coupon.code,
+        name: coupon.name,
+        type: coupon.type,
+        value: coupon.value,
+        stackable: coupon.stackable,
+        consumed: false,
+        appliedAt: new Date().toISOString()
+      }
+
+      setForm(f => ({
+        ...f,
+        appliedCoupons: [...(f.appliedCoupons || []), appliedCoupon]
+      }))
+
+      setCouponCode('')
+      setCouponError('')
+    } catch (e) {
+      setCouponError('Error al buscar el cupón')
+    } finally {
+      setCouponLoading(false)
+    }
+  }
+
+  const removeCoupon = (discountId) => {
+    setForm(f => ({
+      ...f,
+      appliedCoupons: (f.appliedCoupons || []).filter(c => c.discount_id !== discountId)
+    }))
+  }
+
+  const calculateCouponDiscount = (coupon, baseAmount = 0) => {
+    if (coupon.type === 'percentage') {
+      return (baseAmount * coupon.value) / 100
+    }
+    return coupon.value
   }
 
   const handleSubmit = async () => {
@@ -460,7 +611,7 @@ function ReservationFormModal({ initial, tables, clients, onClose, onSave }) {
               padding: '12px 14px',
               borderRadius: 10,
               border: `1.5px solid ${form.clientType === type ? '#2563EB' : 'var(--border)'}`,
-              background: form.clientType === type ? '#DBEAFE' : '#fff',
+              background: form.clientType === type ? '#DBEAFE' : 'var(--bg-panel)',
               color: form.clientType === type ? '#1D4ED8' : 'var(--text-primary)',
               cursor: 'pointer',
               fontWeight: 700
@@ -558,7 +709,7 @@ function ReservationFormModal({ initial, tables, clients, onClose, onSave }) {
                     <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{selectedClient.phone}</div>
                   </div>
                   <button type="button" onClick={() => { setSelectedClient(null); setForm(f => ({ ...f, clientRef: { fullname: '', docID: '' } })) }}
-                    style={{ border: '1.5px solid var(--border)', borderRadius: 10, padding: '10px 14px', background: '#fff', cursor: 'pointer' }}>
+                    style={{ border: '1.5px solid var(--border)', borderRadius: 10, padding: '10px 14px', background: 'var(--bg-panel)', cursor: 'pointer' }}>
                     Cambiar cliente
                   </button>
                 </div>
@@ -574,7 +725,7 @@ function ReservationFormModal({ initial, tables, clients, onClose, onSave }) {
                         style={{
                           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                           padding: '12px 14px', borderRadius: 12, border: '1.5px solid var(--border)',
-                          background: '#fff', cursor: 'pointer', textAlign: 'left'
+                          background: 'var(--bg-panel)', cursor: 'pointer', textAlign: 'left'
                         }}>
                         <div>
                           <div style={{ fontWeight: 700 }}>{client.fullname}</div>
@@ -619,6 +770,91 @@ function ReservationFormModal({ initial, tables, clients, onClose, onSave }) {
           placeholder="Peticiones especiales, alergias, ocasión especial..." />
       </Field>
 
+      {/* ── CUPONES ── */}
+      <div style={{ borderTop: '1.5px solid var(--border)', paddingTop: 16, marginTop: 16, marginBottom: 16 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>
+          Cupones y descuentos
+        </div>
+
+        {/* Búsqueda de cupón */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+          <div style={{ flex: 1 }}>
+            <input
+              style={inputStyle}
+              value={couponCode}
+              onChange={e => { setCouponCode(e.target.value); setCouponError('') }}
+              onKeyPress={e => e.key === 'Enter' && handleSearchCoupon()}
+              placeholder="Ingresa código de cupón..."
+              disabled={couponLoading}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={handleSearchCoupon}
+            disabled={couponLoading || !couponCode.trim()}
+            style={{
+              padding: '10px 14px', borderRadius: 8,
+              background: '#2563EB', color: '#fff', border: 'none',
+              cursor: 'pointer', fontWeight: 600, fontSize: 13,
+              opacity: couponLoading || !couponCode.trim() ? 0.5 : 1
+            }}
+          >
+            {couponLoading ? 'Buscando...' : 'Aplicar'}
+          </button>
+        </div>
+
+        {/* Error de cupón */}
+        {couponError && (
+          <div style={{
+            background: '#FEE2E2', border: '1px solid #FECACA',
+            borderRadius: 8, padding: '8px 12px', marginBottom: 12,
+            fontSize: 12, color: '#B91C1C'
+          }}>
+            {couponError}
+          </div>
+        )}
+
+        {/* Cupones aplicados */}
+        {form.appliedCoupons && form.appliedCoupons.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {form.appliedCoupons.map(coupon => (
+              <div key={coupon.discount_id} style={{
+                background: '#F0FDF4', border: '1.5px solid #86EFAC',
+                borderRadius: 10, padding: 12, display: 'flex',
+                justifyContent: 'space-between', alignItems: 'center'
+              }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#166534' }}>
+                    {coupon.name}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#4ADE80' }}>
+                    Código: <strong>{coupon.code}</strong> • 
+                    {coupon.type === 'percentage' ? ` ${coupon.value}%` : ` $${Number(coupon.value).toLocaleString('es-CO')}`}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeCoupon(coupon.discount_id)}
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: '#16A34A', padding: '8px'
+                  }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{
+            padding: 12, textAlign: 'center', color: 'var(--text-secondary)',
+            fontSize: 13, background: 'var(--bg-main)', borderRadius: 8
+          }}>
+            Sin cupones aplicados
+          </div>
+        )}
+      </div>
+
       <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
         <button className="btn-secondary" onClick={onClose} style={{ flex: 1 }}>
           Cancelar
@@ -656,26 +892,39 @@ function ActionBtn({ icon: Icon, onClick, title, hoverColor }) {
 }
 
 // ─── ROW ──────────────────────────────────────────────────────
-function Row({ res, tables, onView, onEdit, onDelete, index }) {
+function Row({ res, tables, orders = [], onView, onEdit, onDelete, index }) {
+  const actualOrders = orders.length > 0 ? orders : (res.orders || [])
   const name        = res.guest?.fullname || res.clientRef?.fullname || '—'
-  const orderCount  = res.orders?.length || 0
-  const totalAmount = (res.orders || []).reduce((s, o) => s + (o.totalAmount || 0), 0)
-  const totalPaid   = (res.orders || []).reduce((s, o) =>
+  const orderCount  = actualOrders.length
+  const totalAmount = actualOrders.reduce((s, o) => s + (o.totalAmount || 0), 0)
+  const totalPaid   = actualOrders.reduce((s, o) =>
     s + (o.payments || []).filter(p => p.status === 'aprobado')
       .reduce((ps, p) => ps + p.amount, 0), 0)
+
+  // Calcular descuento total de cupones
+  const coupons = res.appliedCoupons || []
+  let totalDiscount = 0
+  coupons.forEach(coupon => {
+    if (coupon.type === 'percentage') {
+      totalDiscount += (totalAmount * coupon.value) / 100
+    } else {
+      totalDiscount += coupon.value
+    }
+  })
+  const discountedTotal = Math.max(0, totalAmount - totalDiscount)
 
   return (
     <div style={{
       display: 'grid',
       gridTemplateColumns: '1.4fr 1.2fr 110px 90px 130px 140px 110px',
       alignItems: 'center', gap: 12,
-      padding: '13px 20px', background: '#fff',
+      padding: '13px 20px', background: 'var(--bg-card)',
       borderBottom: '1.5px solid var(--border-light)',
       animation: `fadeIn 0.2s ease ${index * 0.03}s both`,
       transition: 'background 0.1s'
     }}
-      onMouseEnter={e => e.currentTarget.style.background = '#FAFAF9'}
-      onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-panel)'}
+      onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-card)'}
     >
       {/* Cliente */}
       <div>
@@ -715,20 +964,40 @@ function Row({ res, tables, onView, onEdit, onDelete, index }) {
         }}>{orderCount}</span>
       </div>
 
-      {/* Pagos */}
+      {/* Pagos + Cupón */}
       <div>
         {totalAmount > 0 ? (
           <>
             <div style={{ fontSize: 13, fontWeight: 700 }}>{fmt(totalPaid)}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>de {fmt(totalAmount)}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+              de {fmt(discountedTotal > 0 ? discountedTotal : totalAmount)}
+              {totalDiscount > 0 && (
+                <span style={{ display: 'block', color: '#16A34A', fontWeight: 600, marginTop: 2 }}>
+                  Desc: {fmt(totalDiscount)}
+                </span>
+              )}
+            </div>
           </>
         ) : (
           <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>—</span>
         )}
       </div>
 
-      {/* Estado */}
-      <Badge status={res.status} map={STATUS_CONFIG} />
+      {/* Estado + Cupón */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
+        <Badge status={res.status} map={STATUS_CONFIG} />
+        {coupons.length > 0 && (
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            padding: '2px 8px', borderRadius: 6, background: '#F0FDF4',
+            border: '1px solid #86EFAC', fontSize: 10, fontWeight: 600,
+            color: '#166534'
+          }}>
+            <span>✓</span>
+            <span>{coupons.length} cupón{coupons.length > 1 ? 'es' : ''}</span>
+          </div>
+        )}
+      </div>
 
       {/* Acciones */}
       <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end' }}>
@@ -771,6 +1040,8 @@ export default function Reservations() {
   const [reservations, setReservations] = useState([])
   const [tables, setTables]             = useState([])
   const [clients, setClients]           = useState([])
+  const [orders, setOrders]             = useState([])
+  const [payments, setPayments]         = useState([])
   const [loading, setLoading]           = useState(true)
   const [search, setSearch]             = useState('')
   const [statusFilter, setStatusFilter] = useState('todos')
@@ -780,11 +1051,13 @@ export default function Reservations() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    // Carga reservaciones, mesas y clientes en paralelo
-    const [resResult, tablesResult, clientsResult] = await Promise.allSettled([
+    // Carga reservaciones, mesas, clientes, órdenes y pagos en paralelo
+    const [resResult, tablesResult, clientsResult, ordersResult, paymentsResult] = await Promise.allSettled([
       api.get('/reservations'),
       api.get('/tables'),
-      api.get('/clients')
+      api.get('/clients'),
+      api.get('/orders?limit=100'),
+      api.get('/payments?limit=100')
     ])
 
     // Reservaciones
@@ -809,6 +1082,22 @@ export default function Reservations() {
       setClients(Array.isArray(d) && d.length > 0 ? d : SAMPLE_CLIENTS)
     } else {
       setClients(SAMPLE_CLIENTS)
+    }
+
+    // Órdenes
+    if (ordersResult.status === 'fulfilled') {
+      const d = ordersResult.value.data?.data || ordersResult.value.data
+      setOrders(Array.isArray(d) && d.length > 0 ? d : [])
+    } else {
+      setOrders([])
+    }
+
+    // Pagos
+    if (paymentsResult.status === 'fulfilled') {
+      const d = paymentsResult.value.data?.data || paymentsResult.value.data
+      setPayments(Array.isArray(d) && d.length > 0 ? d : [])
+    } else {
+      setPayments([])
     }
 
     setLoading(false)
@@ -837,6 +1126,7 @@ export default function Reservations() {
       ...(form.channel && { channel: String(form.channel).toLowerCase() }),
       ...(form.notes && { notes: form.notes }),
       ...(form.status && { status: form.status }),
+      ...(form.appliedCoupons && form.appliedCoupons.length > 0 && { appliedCoupons: form.appliedCoupons })
     }
 
     if (form.clientType === 'registered') {
@@ -884,6 +1174,34 @@ export default function Reservations() {
   }
 
   // Stats
+  const ordersByReservation = useMemo(() => {
+    const byOrder = {}
+    const paymentsByOrder = payments.reduce((acc, pay) => {
+      if (!pay.order_id) return acc
+      if (!acc[pay.order_id]) acc[pay.order_id] = []
+      acc[pay.order_id].push(pay)
+      return acc
+    }, {})
+
+    orders.forEach(order => {
+      const reservationId = order.reservation_id
+      if (!reservationId) return
+
+      const enrichedOrder = {
+        ...order,
+        payments: paymentsByOrder[order.order_id] || []
+      }
+
+      if (!byOrder[reservationId]) {
+        byOrder[reservationId] = [enrichedOrder]
+      } else {
+        byOrder[reservationId].push(enrichedOrder)
+      }
+    })
+
+    return byOrder
+  }, [orders, payments])
+
   const stats = {
     total:      reservations.length,
     pendiente:  reservations.filter(r => r.status === 'pendiente').length,
@@ -971,7 +1289,7 @@ export default function Reservations() {
 
       {/* Tabla */}
       <div style={{
-        background: '#fff', border: '1.5px solid var(--border)',
+        background: 'var(--bg-card)', border: '1.5px solid var(--border)',
         borderRadius: 14, overflow: 'hidden', boxShadow: 'var(--shadow-card)'
       }}>
         {/* Cabecera */}
@@ -1005,6 +1323,7 @@ export default function Reservations() {
               key={res.reservation_id}
               res={res}
               tables={tables}
+              orders={ordersByReservation[res.reservation_id] || []}
               index={i}
               onView={setDetailTarget}
               onEdit={r => { setEditTarget(r); setShowForm(true) }}
@@ -1039,6 +1358,7 @@ export default function Reservations() {
         <DetailModal
           res={detailTarget}
           tables={tables}
+          orders={ordersByReservation[detailTarget.reservation_id] || []}
           onClose={() => setDetailTarget(null)}
         />
       )}

@@ -21,6 +21,19 @@ api.interceptors.request.use(
     if (config.data instanceof FormData) {
       delete config.headers['Content-Type']
     }
+
+    const storedAuth = window.localStorage.getItem('laTarimaAuth')
+    if (storedAuth) {
+      try {
+        const { token } = JSON.parse(storedAuth)
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`
+        }
+      } catch {
+        // Ignorar si el contenido de localStorage no es JSON válido
+      }
+    }
+
     return config
   },
   error => Promise.reject(error)

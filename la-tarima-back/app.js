@@ -45,6 +45,9 @@ app.use('/api/discounts', require('./routes/discount.routes'))
 // Business logic / reports
 app.use('/api/reports', require('./routes/report.routes'))
 
+// Authentication
+app.use('/api/auth', require('./routes/auth.routes'))
+
 /**
  * ===== 404 HANDLER =====
  */

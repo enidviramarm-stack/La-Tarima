@@ -44,13 +44,18 @@ exports.getAll = async (req, res) => {
     const page  = parseInt(req.query.page)  || 1
     const limit = Math.min(parseInt(req.query.limit) || 10, 100)
     const skip  = (page - 1) * limit
+    const filter = {}
+
+    if (req.query.active != null) {
+      filter.active = req.query.active === 'true'
+    }
 
     const [staff, total] = await Promise.all([
-      Staff.find()
+      Staff.find(filter)
         .sort({ fullname: 1 })
         .skip(skip)
         .limit(limit),
-      Staff.countDocuments()
+      Staff.countDocuments(filter)
     ])
 
     res.json({ total, page, pages: Math.ceil(total / limit), data: staff })
@@ -122,13 +127,17 @@ exports.update = async (req, res) => {
  */
 exports.remove = async (req, res) => {
   try {
-    const staff = await Staff.findOneAndDelete({ user_id: req.params.user_id })
+    const staff = await Staff.findOneAndUpdate(
+      { user_id: req.params.user_id },
+      { active: false },
+      { new: true }
+    )
 
     if (!staff) {
       return res.status(404).json({ message: 'Usuario no encontrado' })
     }
 
-    res.json({ message: 'Usuario eliminado correctamente' })
+    res.json({ message: 'Usuario marcado como inactivo', data: staff })
   } catch (error) {
     res.status(500).json({
       message: 'Error al eliminar usuario',

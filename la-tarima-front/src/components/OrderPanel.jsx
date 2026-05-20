@@ -145,8 +145,8 @@ export default function OrderPanel({ items, reservation, reservationOrders = [],
             style={{
               width: '100%',
               padding: '12px 16px',
-              background: '#2563EB',
-              color: 'white',
+              background: 'var(--bg-panel)',
+              color: '#fff',
               border: 'none',
               borderRadius: 8,
               cursor: 'pointer',
@@ -172,7 +172,7 @@ export default function OrderPanel({ items, reservation, reservationOrders = [],
   const total    = subtotal + taxes
 
   return (
-    <aside className="order-panel">
+    <aside clvatName="order-panel">
       {/* Header */}
       <div className="order-panel-header">
         <div className="order-panel-title">Orden actual</div>

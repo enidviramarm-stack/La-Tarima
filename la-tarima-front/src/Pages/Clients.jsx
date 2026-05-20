@@ -57,7 +57,7 @@ function Modal({ title, onClose, children, maxWidth = 560 }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24
     }} onClick={onClose}>
       <div style={{
-        background: '#fff', borderRadius: 16,
+        background: 'var(--bg-card)', borderRadius: 16,
         width: '100%', maxWidth,
         maxHeight: '90vh', overflowY: 'auto',
         boxShadow: '0 24px 64px rgba(0,0,0,0.18)',
@@ -88,10 +88,11 @@ const inputStyle = {
   width: '100%', padding: '10px 12px',
   border: '1.5px solid var(--border)', borderRadius: 8,
   fontSize: 14, fontFamily: 'var(--font-body)',
-  outline: 'none', background: '#fff',
+  outline: 'none', background: 'var(--bg-panel)',
   color: 'var(--text-primary)', boxSizing: 'border-box',
   transition: 'border-color 0.15s'
 }
+
 
 function Field({ label, required, icon: Icon, children }) {
   return (
@@ -283,7 +284,7 @@ function FilterPill({ label, active, activeColor, activeBg, onClick }) {
       fontFamily: 'var(--font-body)', fontSize: 13,
       fontWeight: active ? 600 : 400, transition: 'all 0.12s',
       border: active ? `1.5px solid ${activeColor}` : '1.5px solid var(--border)',
-      background: active ? activeBg : '#fff',
+      background: active ? activeBg : 'var(--bg-panel)',
       color: active ? activeColor : 'var(--text-secondary)',
     }}>
       {label}
@@ -338,13 +339,13 @@ function ClientRow({ client, onEdit, onDelete, index }) {
       display: 'grid',
       gridTemplateColumns: '2.2fr 140px 170px 130px 1fr 100px',
       alignItems: 'center', gap: 12,
-      padding: '13px 20px', background: '#fff',
+      padding: '13px 20px', background: 'var(--bg-card)',
       borderBottom: '1.5px solid var(--border-light)',
       animation: `fadeIn 0.2s ease ${index * 0.03}s both`,
       transition: 'background 0.1s'
     }}
-      onMouseEnter={e => e.currentTarget.style.background = '#FAFAF9'}
-      onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-panel)'}
+      onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-card)'}
     >
       {/* Nombre + avatar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
@@ -547,7 +548,7 @@ export default function Clients() {
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 24 }}>
         {[
-          { label: 'Total clientes', val: stats.total,       color: 'var(--text-primary)', bg: '#fff',    border: 'var(--border)',  icon: Users },
+          { label: 'Total clientes', val: stats.total,       color: 'var(--text-primary)', bg: 'var(--bg-card)',    border: 'var(--border)',  icon: Users },
           { label: 'Con email',      val: stats.conEmail,    color: '#1D4ED8',             bg: '#DBEAFE', border: '#BFDBFE',        icon: Mail },
           { label: 'Con teléfono',   val: stats.conTelefono, color: '#065F46',             bg: '#D1FAE5', border: '#A7F3D0',        icon: Phone },
           { label: 'Con notas',      val: stats.conNotas,    color: '#5B21B6',             bg: '#EDE9FE', border: '#DDD6FE',        icon: FileText },
@@ -608,7 +609,7 @@ export default function Clients() {
 
       {/* Tabla */}
       <div style={{
-        background: '#fff', border: '1.5px solid var(--border)',
+        background: 'var(--bg-card)', border: '1.5px solid var(--border)',
         borderRadius: 14, overflow: 'hidden', boxShadow: 'var(--shadow-card)'
       }}>
         {/* Cabecera con sort */}
@@ -665,7 +666,7 @@ export default function Clients() {
                 disabled={page === 1}
                 style={{
                   padding: '4px 10px', borderRadius: 6,
-                  border: '1.5px solid var(--border)', background: '#fff',
+                  border: '1.5px solid var(--border)', background: 'var(--bg-panel)',
                   cursor: page === 1 ? 'not-allowed' : 'pointer',
                   fontSize: 13, color: page === 1 ? '#CBD5E1' : 'var(--text-primary)'
                 }}>
@@ -675,10 +676,10 @@ export default function Clients() {
                 <button
                   key={p}
                   onClick={() => setPage(p)}
-                  style={{
+                    style={{
                     width: 30, height: 30, borderRadius: 6,
                     border: `1.5px solid ${page === p ? 'var(--text-primary)' : 'var(--border)'}`,
-                    background: page === p ? 'var(--text-primary)' : '#fff',
+                    background: page === p ? 'var(--text-primary)' : 'var(--bg-panel)',
                     color: page === p ? '#fff' : 'var(--text-primary)',
                     cursor: 'pointer', fontSize: 13, fontWeight: page === p ? 600 : 400
                   }}>
@@ -690,7 +691,7 @@ export default function Clients() {
                 disabled={page === totalPages}
                 style={{
                   padding: '4px 10px', borderRadius: 6,
-                  border: '1.5px solid var(--border)', background: '#fff',
+                  border: '1.5px solid var(--border)', background: 'var(--bg-panel)',
                   cursor: page === totalPages ? 'not-allowed' : 'pointer',
                   fontSize: 13, color: page === totalPages ? '#CBD5E1' : 'var(--text-primary)'
                 }}>

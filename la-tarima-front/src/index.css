@@ -11,14 +11,15 @@
   --bg-main:      #F5F4F2;
   --bg-card:      #FFFFFF;
   --bg-panel:     #FFFFFF;
+  --bg-nav-active: #333333;
 
   --accent:       #D32F2F;
   --accent-hover: #B71C1C;
   --accent-light: #FFEBEE;
 
   --text-primary:   #1A1A1A;
-  --text-secondary: #6B6B6B;
-  --text-sidebar:   #C8C8C8;
+  --text-secondary: #4A4A4A;
+  --text-sidebar:   #E5E5E5;
   --text-sidebar-active: #FFFFFF;
 
   --border:       #E8E6E1;
@@ -46,6 +47,87 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+body.theme-dark {
+  --bg-sidebar:   #121212;
+  --bg-main:      #111111;
+  --bg-card:      #1B1B1B;
+  --bg-panel:     #181818;
+  --bg-nav-active: #1F1F1F;
+  --accent:       #F97316;
+  --accent-hover: #EA580C;
+  --accent-light: #38150F;
+  --text-primary:   #ECECEC;
+  --text-secondary: #A3A3A3;
+  --text-sidebar:   #B3B3B3;
+  --text-sidebar-active: #FFFFFF;
+  --border:       #2B2B2B;
+  --border-light: #2F2F2F;
+  --shadow-card:  0 2px 18px rgba(0,0,0,0.5);
+  --shadow-panel: 0 0 20px rgba(0,0,0,0.35);
+}
+body.theme-dark input,
+body.theme-dark select,
+body.theme-dark textarea {
+  background: #252525;
+  border-color: #383838;
+  color: #F3F4F6;
+}
+
+body.theme-dark .btn-secondary {
+  color: #F3F4F6;
+  border-color: #383838;
+}
+
+body.theme-dark .search-bar,
+body.theme-dark .user-chip,
+body.theme-dark .category-filter,
+body.theme-dark .page-content,
+body.theme-dark .topbar,
+body.theme-dark .notif-btn {
+  background: #1F1F1F;
+}
+
+body.theme-dark .topbar,
+body.theme-dark .page-content {
+  background: var(--bg-main);
+}
+
+/* Override common inline white backgrounds in dark mode */
+body.theme-dark [style*="background:#fff"],
+body.theme-dark [style*="background: #fff"],
+body.theme-dark [style*="background:'#fff'"],
+body.theme-dark [style*='background: "#fff"'],
+body.theme-dark [style*="background:#FFFFFF"],
+body.theme-dark [style*="background: #FFFFFF"],
+body.theme-dark [style*="#fff"] {
+  background: var(--bg-panel) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border) !important;
+  box-shadow: none !important;
+}
+
+/* Common light greys used across components */
+body.theme-dark [style*="#F8FAFC"],
+body.theme-dark [style*="#F9FAFB"],
+body.theme-dark [style*="#F3F4F6"],
+body.theme-dark [style*="#DBEAFE"],
+body.theme-dark [style*="#FFFBEB"],
+body.theme-dark [style*="#E5E7EB"],
+body.theme-dark [style*="#D1FAE5"],
+body.theme-dark [style*="#FEF3C7"],
+body.theme-dark [style*="#EDE9FE"],
+body.theme-dark [style*="#FCE7F3"] {
+  background: var(--bg-panel) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border) !important;
+}
+
+/* Ensure buttons that used white bg show correct text color */
+body.theme-dark button[style],
+body.theme-dark a[style] {
+  color: inherit !important;
+}
+
 /* ── LAYOUT ── */
 .app-layout {
   display: flex;
@@ -70,7 +152,7 @@ body {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: var(--text-primary);
+  background: #000;
   color: #fff;
   border: none;
   border-radius: var(--radius-sm);
@@ -83,6 +165,13 @@ body {
   transition: background 0.15s;
 }
 .btn-primary:hover { background: #333; }
+
+body.theme-dark .btn-primary {
+  background: var(--accent);
+}
+body.theme-dark .btn-primary:hover {
+  background: var(--accent-hover);
+}
 
 .btn-secondary {
   display: flex;

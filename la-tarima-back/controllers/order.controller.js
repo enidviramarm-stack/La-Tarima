@@ -4,7 +4,7 @@ const Reservation = require('../models/reservation')
 const Product = require('../models/product')
 const generateId = require('../utils/generateId')
 
-const ALLOWED_UPDATE_FIELDS = ['clientHint', 'notes']
+const ALLOWED_UPDATE_FIELDS = ['clientHint', 'notes', 'status']
 
 const FINAL_ORDER_STATUSES = ['servido', 'cancelado']
 

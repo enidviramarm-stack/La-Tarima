@@ -33,6 +33,10 @@ const StaffSchema = new Schema({
       },
       message: 'Email debe ser un formato válido'
     }
+  },
+  active: {
+    type: Boolean,
+    default: true
   }
 }, {
   timestamps: true,

@@ -33,14 +33,14 @@ const SUBCATEGORY_OPTIONS = {
 }
 
 const SAMPLE_PRODUCTS = [
-  { product_id: 'PROD_0001', name: 'Bandeja Paisa',      category: 'comida', basePrice: 25000, active: true,  description: 'Plato típico colombiano con frijoles, arroz, chicharrón, huevo y aguacate.',  imageUrl: 'https://images.unsplash.com/photo-1565299507177-b0ac66763828?w=500&q=80' },
-  { product_id: 'PROD_0002', name: 'Mojito Clásico',     category: 'bebida', basePrice: 32000, active: true,  description: 'Ron blanco, limón, menta fresca, azúcar y agua con gas.',                      imageUrl: 'https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=500&q=80' },
-  { product_id: 'PROD_0003', name: 'Alitas BBQ',         category: 'comida', basePrice: 24000, active: true,  description: 'Alitas de pollo bañadas en salsa BBQ artesanal, con aderezo ranch.',          imageUrl: 'https://images.unsplash.com/photo-1527477396000-e27163b481c2?w=500&q=80' },
-  { product_id: 'PROD_0004', name: 'Cerveza Corona',     category: 'bebida', basePrice: 12000, active: true,  description: 'Cerveza mexicana tipo lager, fría y refrescante.',                           imageUrl: 'https://images.unsplash.com/photo-1608270586620-248524c67de9?w=500&q=80' },
-  { product_id: 'PROD_0005', name: 'Nachos Mixtos',      category: 'comida', basePrice: 26000, active: true,  description: 'Totopos con queso fundido, guacamole, jalapeños y crema agria.',             imageUrl: 'https://images.unsplash.com/photo-1513456852971-30c0b8199d4d?w=500&q=80' },
-  { product_id: 'PROD_0006', name: 'Limonada Natural',   category: 'bebida', basePrice: 8000,  active: true,  description: 'Limonada hecha con limones frescos, azúcar y hielo.',                       imageUrl: 'https://images.unsplash.com/photo-1621263764928-df1444c5e859?w=500&q=80' },
-  { product_id: 'PROD_0007', name: 'Tabla de Quesos',    category: 'comida', basePrice: 38000, active: false, description: 'Selección de quesos artesanales con miel, nueces y mermelada de higos.',     imageUrl: 'https://images.unsplash.com/photo-1452195100486-9cc805987862?w=500&q=80' },
-  { product_id: 'PROD_0008', name: 'Whisky Old Fashioned',category:'bebida', basePrice: 38000, active: true,  description: 'Whisky bourbon, azúcar, angostura y cáscara de naranja.',                   imageUrl: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=500&q=80' },
+  { product_id: 'PROD_0001', name: 'Bandeja Paisa',      category: 'comida', subcategory: 'platos_fuertes', basePrice: 25000, active: true,  description: 'Plato típico colombiano con frijoles, arroz, chicharrón, huevo y aguacate.',  imageUrl: 'https://images.unsplash.com/photo-1565299507177-b0ac66763828?w=500&q=80' },
+  { product_id: 'PROD_0002', name: 'Mojito Clásico',     category: 'bebida', subcategory: 'coctel',        basePrice: 32000, active: true,  description: 'Ron blanco, limón, menta fresca, azúcar y agua con gas.',                      imageUrl: 'https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=500&q=80' },
+  { product_id: 'PROD_0003', name: 'Alitas BBQ',         category: 'comida', subcategory: 'snack',          basePrice: 24000, active: true,  description: 'Alitas de pollo bañadas en salsa BBQ artesanal, con aderezo ranch.',          imageUrl: 'https://images.unsplash.com/photo-1527477396000-e27163b481c2?w=500&q=80' },
+  { product_id: 'PROD_0004', name: 'Cerveza Corona',     category: 'bebida', subcategory: 'cerveza',        basePrice: 12000, active: true,  description: 'Cerveza mexicana tipo lager, fría y refrescante.',                           imageUrl: 'https://images.unsplash.com/photo-1608270586620-248524c67de9?w=500&q=80' },
+  { product_id: 'PROD_0005', name: 'Nachos Mixtos',      category: 'comida', subcategory: 'snack',          basePrice: 26000, active: true,  description: 'Totopos con queso fundido, guacamole, jalapeños y crema agria.',             imageUrl: 'https://images.unsplash.com/photo-1513456852971-30c0b8199d4d?w=500&q=80' },
+  { product_id: 'PROD_0006', name: 'Limonada Natural',   category: 'bebida', subcategory: 'otro',           basePrice: 8000,  active: true,  description: 'Limonada hecha con limones frescos, azúcar y hielo.',                       imageUrl: 'https://images.unsplash.com/photo-1621263764928-df1444c5e859?w=500&q=80' },
+  { product_id: 'PROD_0007', name: 'Tabla de Quesos',    category: 'comida', subcategory: 'especialidades', basePrice: 38000, active: false, description: 'Selección de quesos artesanales con miel, nueces y mermelada de higos.',     imageUrl: 'https://images.unsplash.com/photo-1452195100486-9cc805987862?w=500&q=80' },
+  { product_id: 'PROD_0008', name: 'Whisky Old Fashioned',category:'bebida', subcategory: 'licor',           basePrice: 38000, active: true,  description: 'Whisky bourbon, azúcar, angostura y cáscara de naranja.',                   imageUrl: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=500&q=80' },
 ]
 
 const EMPTY_FORM = {
@@ -100,7 +100,7 @@ function Modal({ title, onClose, children, maxWidth = 560 }) {
       padding: 24, backdropFilter: 'blur(2px)'
     }} onClick={onClose}>
       <div style={{
-        background: '#fff', borderRadius: 16,
+        background: 'var(--bg-card)', borderRadius: 16,
         width: '100%', maxWidth,
         maxHeight: '90vh', overflowY: 'auto',
         boxShadow: '0 24px 64px rgba(0,0,0,0.18)',
@@ -146,7 +146,7 @@ const inputStyle = {
   width: '100%', padding: '10px 12px',
   border: '1.5px solid var(--border)', borderRadius: 8,
   fontSize: 14, fontFamily: 'var(--font-body)',
-  outline: 'none', background: '#fff',
+  outline: 'none', background: 'var(--bg-panel)',
   color: 'var(--text-primary)', boxSizing: 'border-box',
   transition: 'border-color 0.15s'
 }
@@ -389,7 +389,7 @@ function FilterPill({ value, label, active, activeColor, activeBg, onClick }) {
       fontFamily: 'var(--font-body)', fontSize: 13,
       fontWeight: active ? 600 : 400, transition: 'all 0.12s',
       border: active ? `1.5px solid ${activeColor}` : '1.5px solid var(--border)',
-      background: active ? activeBg : '#fff',
+      background: active ? activeBg : 'var(--bg-panel)',
       color: active ? activeColor : 'var(--text-secondary)',
     }}>
       {label}
@@ -404,7 +404,7 @@ function ProductCard({ product, onEdit, onDelete, index }) {
 
   return (
     <div style={{
-      background: '#fff',
+      background: 'var(--bg-card)',
       border: '1.5px solid var(--border-light)',
       borderRadius: 14, overflow: 'hidden',
       display: 'flex', flexDirection: 'column',
@@ -439,8 +439,8 @@ function ProductCard({ product, onEdit, onDelete, index }) {
         position: 'absolute', top: 10, right: 10, zIndex: 2,
         display: 'flex', gap: 6
       }}>
-        <CardActionBtn icon={Edit2}  onClick={() => onEdit(product)}   bg="#fff" color="#F59E0B" title="Editar" />
-        <CardActionBtn icon={Trash2} onClick={() => onDelete(product)} bg="#fff" color="#EF4444" title="Desactivar" />
+        <CardActionBtn icon={Edit2}  onClick={() => onEdit(product)}   bg="var(--bg-panel)" color="#F59E0B" title="Editar" />
+        <CardActionBtn icon={Trash2} onClick={() => onDelete(product)} bg="var(--bg-panel)" color="#EF4444" title="Desactivar" />
       </div>
 
       {/* Imagen */}
@@ -527,6 +527,7 @@ export default function Products() {
   const [loading, setLoading]       = useState(true)
   const [search, setSearch]         = useState('')
   const [catFilter, setCatFilter]   = useState('todos')
+  const [subcatFilter, setSubcatFilter] = useState('todos')
   const [activeFilter, setActiveFilter] = useState('activos')
   const [showForm, setShowForm]     = useState(false)
   const [editTarget, setEditTarget] = useState(null)
@@ -545,17 +546,37 @@ export default function Products() {
 
   useEffect(() => { load() }, [load])
 
+  useEffect(() => {
+    setSubcatFilter('todos')
+  }, [catFilter])
+
+  const subcategoryOptions = (() => {
+    if (catFilter === 'comida' || catFilter === 'bebida') {
+      return SUBCATEGORY_OPTIONS[catFilter] || []
+    }
+
+    return Object.values(SUBCATEGORY_OPTIONS)
+      .flat()
+      .reduce((unique, item) => {
+        if (!unique.some(entry => entry.value === item.value)) {
+          unique.push(item)
+        }
+        return unique
+      }, [])
+  })()
+
   // Filtrar
   const filtered = products.filter(p => {
     const matchSearch = p.name.toLowerCase().includes(search.toLowerCase())
       || (p.description || '').toLowerCase().includes(search.toLowerCase())
       || p.product_id.toLowerCase().includes(search.toLowerCase())
     const matchCat = catFilter === 'todos' || p.category === catFilter
+    const matchSubcat = subcatFilter === 'todos' || p.subcategory === subcatFilter
     const matchActive =
       activeFilter === 'todos'   ? true :
       activeFilter === 'activos' ? p.active !== false :
                                    p.active === false
-    return matchSearch && matchCat && matchActive
+    return matchSearch && matchCat && matchSubcat && matchActive
   })
 
   // Stats
@@ -652,7 +673,7 @@ export default function Products() {
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 24 }}>
         {[
-          { label: 'Activos',   val: activos,   color: 'var(--text-primary)', bg: '#fff',    border: 'var(--border)' },
+          { label: 'Activos',   val: activos,   color: 'var(--text-primary)', bg: 'var(--bg-card)',    border: 'var(--border)' },
           { label: 'Comidas',   val: comidas,   color: '#92400E',             bg: '#FEF3C7', border: '#FDE68A' },
           { label: 'Bebidas',   val: bebidas,   color: '#1E40AF',             bg: '#DBEAFE', border: '#BFDBFE' },
           { label: 'Inactivos', val: inactivos, color: '#374151',             bg: '#F3F4F6', border: '#E5E7EB' },
@@ -690,11 +711,36 @@ export default function Products() {
         </div>
 
         {/* Filtro categoría */}
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <FilterPill value="todos"  label="Todos"  active={catFilter === 'todos'}  activeColor="#111"    activeBg="#F3F4F6" onClick={() => setCatFilter('todos')} />
           <FilterPill value="comida" label="🍽️ Comida" active={catFilter === 'comida'} activeColor="#92400E" activeBg="#FEF3C7" onClick={() => setCatFilter('comida')} />
           <FilterPill value="bebida" label="🥤 Bebida" active={catFilter === 'bebida'} activeColor="#1E40AF" activeBg="#DBEAFE" onClick={() => setCatFilter('bebida')} />
         </div>
+
+        {/* Filtro subcategoría */}
+        {subcategoryOptions.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+            <FilterPill
+              value="todos"
+              label="Todas"
+              active={subcatFilter === 'todos'}
+              activeColor="#111"
+              activeBg="#F3F4F6"
+              onClick={() => setSubcatFilter('todos')}
+            />
+            {subcategoryOptions.map(option => (
+              <FilterPill
+                key={option.value}
+                value={option.value}
+                label={option.label}
+                active={subcatFilter === option.value}
+                activeColor="#111"
+                activeBg="#F3F4F6"
+                onClick={() => setSubcatFilter(option.value)}
+              />
+            ))}
+          </div>
+        )}
 
         {/* Separador */}
         <div style={{ width: 1, height: 28, background: 'var(--border)' }} />
