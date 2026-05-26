@@ -1,18 +1,72 @@
-# React + Vite
+# La Tarima - Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+**Panel administrativo para el sistema de reservas y gestión del bar La Tarima.**
 
-Currently, two official plugins are available:
+## 📋 ¿Qué incluye?
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Interfaz React + Vite para administrar:
+  - Clientes
+  - Productos
+  - Órdenes
+  - Reservas
+  - Pagos
+  - Descuentos
+  - Reportes
+- Conexión con la API REST del backend (`la-tarima-back`).
+- Rutas protegidas para acceso administrativo.
+- Manejo de estados y consumo de datos con `axios`.
 
-## React Compiler
+## 🚀 Requisitos
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Node.js 18+ instalado
+- npm 9+ instalado
+- Backend ejecutándose en `http://localhost:3000` (o ajustar la URL en `src/Api/axios.js`)
 
-## Expanding the ESLint configuration
+## 🔧 Instalación y ejecución
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+cd "la-tarima-front"
+npm install
+npm run dev
+```
 
-// dependencias necesarias
+Luego abre el enlace que muestra Vite (por defecto `http://localhost:5173`).
+
+## 🛠 Comandos disponibles
+
+```bash
+npm run dev      # Inicia el servidor de desarrollo
+npm run build    # Genera la versión de producción
+npm run preview  # Previsualiza la versión de producción
+npm run lint     # Ejecuta ESLint en el proyecto
+```
+
+## 🗂 Estructura principal
+
+- `src/main.jsx`  → Punto de entrada de React
+- `src/App.jsx`   → Configuración de rutas y layout global
+- `src/Api/axios.js` → Instancia Axios para llamadas al backend
+- `src/components/` → Componentes reutilizables
+- `src/Pages/`    → Vistas de la aplicación
+- `src/assets/`   → Recursos estáticos
+
+## ⚙️ Configuración del backend
+
+La aplicación frontend consume la API desde `src/Api/axios.js`. Si tu backend usa otra dirección, actualiza el valor de `baseURL` en ese archivo.
+
+```js
+import axios from 'axios';
+
+const axiosInstance = axios.create({
+  baseURL: 'http://localhost:3000/api',
+  timeout: 10000,
+});
+
+export default axiosInstance;
+```
+
+## 📌 Notas
+
+- Asegúrate de tener el backend corriendo antes de iniciar el frontend.
+- Si agregas nuevas rutas al backend, actualiza los servicios y componentes correspondientes en `src/Pages/`.
+- El frontend está diseñado para usarse como panel administrativo; no incluye un sitio público separado.

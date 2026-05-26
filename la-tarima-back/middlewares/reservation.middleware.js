@@ -16,6 +16,19 @@ const getDurationMinutes = (startTime, endTime) => {
   return end - start
 }
 
+const parseLocalDateString = (value) => {
+  const [year, month, day] = String(value).split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
+const isPastLocalDate = (value) => {
+  const date = parseLocalDateString(value)
+  if (isNaN(date.getTime())) return false
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return date < today
+}
+
 exports.validateCreateReservation = [
   body('table_id')
     .trim()
@@ -26,11 +39,11 @@ exports.validateCreateReservation = [
     .notEmpty().withMessage('date es obligatorio')
     .matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('Formato de fecha inválido (YYYY-MM-DD)')
     .custom((value) => {
-      const date = new Date(value)
+      const date = parseLocalDateString(value)
       if (isNaN(date.getTime())) {
         throw new Error('Fecha inválida')
       }
-      if (date < new Date().setHours(0, 0, 0, 0)) {
+      if (isPastLocalDate(value)) {
         throw new Error('No se puede reservar para fechas pasadas')
       }
       return true
@@ -133,11 +146,11 @@ exports.validateUpdateReservation = [
     .matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('Formato de fecha inválido (YYYY-MM-DD)')
     .custom((value) => {
       if (value) {
-        const date = new Date(value)
+        const date = parseLocalDateString(value)
         if (isNaN(date.getTime())) {
           throw new Error('Fecha inválida')
         }
-        if (date < new Date().setHours(0, 0, 0, 0)) {
+        if (isPastLocalDate(value)) {
           throw new Error('No se puede reservar para fechas pasadas')
         }
       }

@@ -144,6 +144,9 @@ npm install
 # - dotenv
 # - express-validator
 # - multer
+# - jsonwebtoken
+# - nodemailer
+# - connect-multiparty
 # - nodemon (para desarrollo)
 ```
 
