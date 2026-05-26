@@ -26,6 +26,8 @@ const StaffSchema = new Schema({
     type: String,
     trim: true,
     lowercase: true,
+    unique: true,
+    sparse: true,
     validate: {
       validator: function(v) {
         if (!v) return true // Email es opcional
@@ -33,6 +35,18 @@ const StaffSchema = new Schema({
       },
       message: 'Email debe ser un formato válido'
     }
+  },
+  passwordHash: {
+    type: String,
+    trim: true
+  },
+  passwordSalt: {
+    type: String,
+    trim: true
+  },
+  verified: {
+    type: Boolean,
+    default: false
   },
   active: {
     type: Boolean,

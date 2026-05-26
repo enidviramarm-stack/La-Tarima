@@ -13,6 +13,7 @@ import Tables from './Pages/Tables'
 import Reports from './Pages/Reports'
 import Settings from './Pages/Settings'
 import Login from './Pages/Login'
+import Verify from './Pages/Verify'
 import './index.css'
 
 const getStoredAuth = () => {
@@ -104,6 +105,7 @@ export default function App() {
         }}>
           <Routes>
             <Route path="/login" element={auth?.token ? <Navigate to="/" replace /> : <Login onLogin={handleLogin} />} />
+            <Route path="/verify" element={<Verify onLogin={handleLogin} />} />
             <Route path="/" element={<RequireAuth><Home /></RequireAuth>} />
             <Route path="/orders" element={<RequireAuth><Orders /></RequireAuth>} />
             <Route path="/reservations" element={<RequireAuth><Reservations /></RequireAuth>} />
